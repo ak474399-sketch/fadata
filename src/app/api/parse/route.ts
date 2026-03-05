@@ -24,14 +24,17 @@ export async function POST(request: Request) {
     }
 
     if (!upstream.ok) {
+      const upstreamErrorText =
+        typeof payload === "object" && payload && "error" in payload
+          ? String((payload as { error?: unknown }).error ?? "")
+          : text.slice(0, 300);
       return NextResponse.json(
         {
           results: [],
           errors: [
             {
               fileName: "-",
-              message:
-                "解析服务暂不可用（本地 `next dev` 不会运行 Python Function）。请使用 `vercel dev` 启动，或部署到 Vercel 后再解析。"
+              message: `解析服务异常（HTTP ${upstream.status}）。${upstreamErrorText || "请检查 Vercel Function 日志。"}`
             }
           ]
         },

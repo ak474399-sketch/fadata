@@ -1,4 +1,11 @@
+from pathlib import Path
+import sys
+
 from flask import Flask, jsonify, request
+
+CURRENT_DIR = Path(__file__).resolve().parent
+if str(CURRENT_DIR) not in sys.path:
+    sys.path.append(str(CURRENT_DIR))
 
 from common.parser import parse_dataframe, read_table
 
