@@ -1,0 +1,11 @@
+.next
+node_modules
+.venv
+.pycache
+Library
+out
+dist
+coverage
+.DS_Store
+*.log
+tsconfig.tsbuildinfo
