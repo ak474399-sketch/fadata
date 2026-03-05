@@ -12,11 +12,30 @@ const numberFormatter = new Intl.NumberFormat("en-US");
 export function ResultTable({ result }: ResultTableProps) {
   const [selectedDay, setSelectedDay] = useState<string>("all");
   const [selectedContent, setSelectedContent] = useState<string>("all");
+  const rows = result?.rows ?? [];
 
   useEffect(() => {
     setSelectedDay("all");
     setSelectedContent("all");
   }, [result?.fileName]);
+
+  const days = useMemo(
+    () => Array.from(new Set(rows.map((item) => item.day))).sort(),
+    [rows]
+  );
+  const contents = useMemo(
+    () => Array.from(new Set(rows.map((item) => item.notificationContent))).sort(),
+    [rows]
+  );
+  const filteredRows = useMemo(
+    () =>
+      rows.filter(
+        (item) =>
+          (selectedDay === "all" || item.day === selectedDay) &&
+          (selectedContent === "all" || item.notificationContent === selectedContent)
+      ),
+    [rows, selectedDay, selectedContent]
+  );
 
   if (!result) {
     return (
@@ -26,24 +45,6 @@ export function ResultTable({ result }: ResultTableProps) {
       </div>
     );
   }
-
-  const days = useMemo(
-    () => Array.from(new Set(result.rows.map((item) => item.day))).sort(),
-    [result.rows]
-  );
-  const contents = useMemo(
-    () => Array.from(new Set(result.rows.map((item) => item.notificationContent))).sort(),
-    [result.rows]
-  );
-  const filteredRows = useMemo(
-    () =>
-      result.rows.filter(
-        (item) =>
-          (selectedDay === "all" || item.day === selectedDay) &&
-          (selectedContent === "all" || item.notificationContent === selectedContent)
-      ),
-    [result.rows, selectedDay, selectedContent]
-  );
 
   return (
     <div className="card">
