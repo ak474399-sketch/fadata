@@ -20,6 +20,7 @@ export default function HomePage() {
   const [data, setData] = useState<ParseResponse>({ results: [], errors: [] });
   const [selectedFileName, setSelectedFileName] = useState<string>("");
   const [reportMsg, setReportMsg] = useState("");
+  const [parseProgress, setParseProgress] = useState(0);
 
   const selectedResult = useMemo<ParsedFileResult | undefined>(
     () => data.results.find((item) => item.fileName === selectedFileName) ?? data.results[0],
@@ -36,10 +37,14 @@ export default function HomePage() {
   const handleParse = async () => {
     if (!files.length) return;
     setUploading(true);
+    setParseProgress(8);
     setReportMsg("");
     setData({ results: [], errors: [] });
     const form = new FormData();
     for (const file of files) form.append("files", file);
+    const progressTimer = window.setInterval(() => {
+      setParseProgress((prev) => (prev >= 90 ? prev : prev + 6));
+    }, 250);
 
     try {
       const response = await fetch("/api/parse", { method: "POST", body: form });
@@ -61,13 +66,17 @@ export default function HomePage() {
       if (result.results.length) {
         setSelectedFileName(result.results[0].fileName);
       }
+      setParseProgress(100);
     } catch {
       setData({
         results: [],
         errors: [{ fileName: "-", message: "网络异常，解析请求未成功发出。" }]
       });
+      setParseProgress(100);
     } finally {
+      window.clearInterval(progressTimer);
       setUploading(false);
+      window.setTimeout(() => setParseProgress(0), 500);
     }
   };
 
@@ -108,42 +117,39 @@ export default function HomePage() {
 
       <UploadPanel
         uploading={uploading}
+        parseProgress={parseProgress}
+        files={files}
         onFileChange={handleFileChange}
         onParse={handleParse}
-        onDownloadCurrent={() => handleDownload("single")}
-        onDownloadZip={() => handleDownload("zip")}
         canParse={canParse}
-        canDownloadCurrent={Boolean(selectedResult)}
-        canDownloadZip={data.results.length > 1}
       />
-
-      {files.length > 0 && (
-        <div className="card">
-          <strong>已上传文件</strong>
-          <div style={{ marginTop: 10 }}>
-            {files.map((file) => (
-              <span className="chip" key={file.name}>
-                {file.name}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
 
       {data.results.length > 0 && (
         <div className="card">
-          <strong>选择结果文件：</strong>
-          <select
-            value={selectedResult?.fileName}
-            onChange={(event) => setSelectedFileName(event.target.value)}
-            style={{ marginLeft: 8 }}
-          >
-            {data.results.map((result) => (
-              <option key={result.fileName} value={result.fileName}>
-                {result.fileName}
-              </option>
-            ))}
-          </select>
+          <div className="result-header">
+            <div>
+              <strong>选择结果文件：</strong>
+              <select
+                value={selectedResult?.fileName}
+                onChange={(event) => setSelectedFileName(event.target.value)}
+                style={{ marginLeft: 8 }}
+              >
+                {data.results.map((result) => (
+                  <option key={result.fileName} value={result.fileName}>
+                    {result.fileName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="actions" style={{ marginTop: 0 }}>
+              <button disabled={!selectedResult} onClick={() => handleDownload("single")}>
+                下载当前结果
+              </button>
+              <button disabled={data.results.length <= 1} onClick={() => handleDownload("zip")}>
+                打包下载 ZIP
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

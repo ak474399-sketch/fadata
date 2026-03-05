@@ -44,6 +44,55 @@ body {
   margin-top: 12px;
 }
 
+.upload-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 16px;
+}
+
+.dropzone {
+  margin-top: 10px;
+  border: 1.5px dashed #9fb5e7;
+  border-radius: 10px;
+  background: #f8faff;
+  color: #3557a8;
+  padding: 22px 16px;
+  text-align: center;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.dropzone-active {
+  border-color: #2463eb;
+  background: #eef3ff;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.progress-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: #e8edf7;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2f69f0, #4f8dff);
+  transition: width 0.2s ease;
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 button {
   border: none;
   border-radius: 8px;
@@ -99,4 +148,10 @@ th {
   margin-right: 8px;
   margin-bottom: 8px;
   font-size: 12px;
+}
+
+@media (max-width: 860px) {
+  .upload-grid {
+    grid-template-columns: 1fr;
+  }
 }
