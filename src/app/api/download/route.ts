@@ -43,7 +43,7 @@ function formatValue(value: number, percent?: boolean): string | number {
 
 function toSheetRows(
   rows: AnalysisRow[],
-  lead: Array<{ key: "version" | "day" | "content"; label: string }>
+  lead: Array<{ key: "batch" | "version" | "day" | "content"; label: string }>
 ): Array<Record<string, string | number>> {
   return rows.map((row) => {
     const out: Record<string, string | number> = {};
@@ -60,22 +60,23 @@ function toSheetRows(
 function toWorkbook(fileResult: ParsedFileResult): ArrayBuffer {
   const workbook = XLSX.utils.book_new();
   const sheet1Rows = toSheetRows(fileResult.sheets.dailyByDay, [
+    { key: "batch", label: "批次" },
     { key: "version", label: "版本号" },
     { key: "day", label: "天" }
   ]);
   const sheet2Rows = toSheetRows(fileResult.sheets.byContent, [
+    { key: "batch", label: "批次" },
     { key: "version", label: "版本号" },
     { key: "content", label: "内容" }
   ]);
-  const sheet3Rows = toSheetRows(fileResult.sheets.byVersionDayContent, [
+  const sheet3Rows = toSheetRows(fileResult.sheets.byVersionSummary, [
+    { key: "batch", label: "批次" },
     { key: "version", label: "版本号" },
-    { key: "day", label: "天" },
-    { key: "content", label: "内容" }
   ]);
 
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheet1Rows), "分日 PUSH 分析");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheet2Rows), "PUSH 内容分析");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheet3Rows), "分版本 PUSH 内容分析");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheet3Rows), "分版本汇总分析");
   return XLSX.write(workbook, { type: "array", bookType: "xlsx" });
 }
 

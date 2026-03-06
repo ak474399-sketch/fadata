@@ -13,7 +13,7 @@ const decimalFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2
 });
 
-type TableKey = "dailyByDay" | "byContent" | "byVersionDayContent";
+type TableKey = "dailyByDay" | "byContent" | "byVersionSummary";
 
 const PATH_COLUMNS: Array<{ key: keyof AnalysisRow; label: string; percent?: boolean; decimal?: boolean }> = [
   { key: "firstOpen", label: "first open" },
@@ -49,7 +49,7 @@ function formatCell(value: number, percent?: boolean, decimal?: boolean): string
 
 export function ResultTable({ result }: ResultTableProps) {
   const [activeTable, setActiveTable] = useState<TableKey>("dailyByDay");
-  const safeSheets = result?.sheets ?? { dailyByDay: [], byContent: [], byVersionDayContent: [] };
+  const safeSheets = result?.sheets ?? { dailyByDay: [], byContent: [], byVersionSummary: [] };
 
   useEffect(() => {
     setActiveTable("dailyByDay");
@@ -57,27 +57,28 @@ export function ResultTable({ result }: ResultTableProps) {
   const titleMap: Record<TableKey, string> = {
     dailyByDay: "分日 PUSH 分析",
     byContent: "PUSH 内容分析",
-    byVersionDayContent: "分版本 PUSH 内容分析"
+    byVersionSummary: "分版本汇总分析"
   };
   const rows = safeSheets[activeTable];
 
   const leadingColumns = useMemo(() => {
     if (activeTable === "dailyByDay") {
       return [
+        { key: "batch" as const, label: "批次" },
         { key: "version" as const, label: "版本号" },
         { key: "day" as const, label: "天" }
       ];
     }
     if (activeTable === "byContent") {
       return [
+        { key: "batch" as const, label: "批次" },
         { key: "version" as const, label: "版本号" },
         { key: "content" as const, label: "内容" }
       ];
     }
     return [
+      { key: "batch" as const, label: "批次" },
       { key: "version" as const, label: "版本号" },
-      { key: "day" as const, label: "天" },
-      { key: "content" as const, label: "内容" }
     ];
   }, [activeTable]);
 
@@ -102,10 +103,10 @@ export function ResultTable({ result }: ResultTableProps) {
           PUSH 内容分析
         </button>
         <button
-          disabled={activeTable === "byVersionDayContent"}
-          onClick={() => setActiveTable("byVersionDayContent")}
+          disabled={activeTable === "byVersionSummary"}
+          onClick={() => setActiveTable("byVersionSummary")}
         >
-          分版本 PUSH 内容分析
+          分版本汇总分析
         </button>
       </div>
       <p className="muted" style={{ marginBottom: 10 }}>

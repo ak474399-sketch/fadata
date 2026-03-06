@@ -73,7 +73,7 @@ export default function HomePage() {
             acc +
             item.sheets.dailyByDay.length +
             item.sheets.byContent.length +
-            item.sheets.byVersionDayContent.length
+            item.sheets.byVersionSummary.length
           );
         }, 0);
         setSuccessMessage(`解析完成：${result.results.length} 个文件，共 ${totalRows} 行分析数据。`);

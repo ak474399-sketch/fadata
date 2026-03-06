@@ -11,7 +11,6 @@ import pandas as pd
 DATE_RANGE_PATTERN = re.compile(r"(\d{8})-(\d{8})")
 N_LABEL_PATTERN = re.compile(r"^\d{4}$")
 DATE_PATTERN = re.compile(r"^\d{8}$")
-NOTIFY_PATTERN = re.compile(r"^notify_[^_]+_([A-Za-z]+?)(?:A\d+)?$")
 
 
 def _normalize_int(value) -> int:
@@ -28,14 +27,14 @@ def _normalize_int(value) -> int:
         return 0
 
 
-def _extract_report_date(df: pd.DataFrame) -> str:
-    for row_index in range(min(8, len(df.index))):
+def _extract_date_range(df: pd.DataFrame) -> Tuple[str, str]:
+    for row_index in range(min(10, len(df.index))):
         for value in df.iloc[row_index].tolist():
             if value is None:
                 continue
             match = DATE_RANGE_PATTERN.search(str(value))
             if match:
-                return match.group(2)
+                return match.group(1), match.group(2)
     raise ValueError("未识别到导出日期区间（YYYYMMDD-YYYYMMDD）。")
 
 
@@ -49,12 +48,21 @@ def _find_event_header_row(df: pd.DataFrame) -> int:
 
 def _notify_group(name: str) -> str:
     notify_name = (name or "").strip()
-    if notify_name == "notify_pdf05_fcm":
-        return "fcm"
-    match = NOTIFY_PATTERN.match(notify_name)
-    if match:
-        return match.group(1).lower()
-    return notify_name.lower() or "unknown"
+    if not notify_name:
+        return "unknown"
+    if notify_name == "(not set)":
+        return "(not set)"
+
+    suffix = notify_name
+    if notify_name.startswith("notify_"):
+        parts = notify_name.split("_", 2)
+        if len(parts) == 3:
+            suffix = parts[2]
+
+    suffix = re.sub(r"A\d+$", "", suffix, flags=re.IGNORECASE)
+    suffix = re.sub(r"\d+$", "", suffix)
+    suffix = suffix.strip("_").lower()
+    return suffix or "unknown"
 
 
 def _build_header_index(df: pd.DataFrame) -> Dict[str, int]:
@@ -119,6 +127,56 @@ def read_table(file_name: str, payload: bytes) -> pd.DataFrame:
     raise ValueError("不支持的文件格式，仅支持 csv/tsv/xlsx/xls。")
 
 
+def _empty_group() -> Dict[str, int]:
+    return {
+        "d0PushUsers": 0,
+        "d0PushEvents": 0,
+        "d0ClickUsers": 0,
+        "d0ClickEvents": 0,
+        "d1PushUsers": 0,
+        "d1PushEvents": 0,
+        "d1ClickUsers": 0,
+        "d1ClickEvents": 0,
+    }
+
+
+def _build_metrics(group: Dict[str, int], first_open: int, authorized_users: int, uninstall_users: int) -> Dict:
+    d0_push_users = group["d0PushUsers"]
+    d0_push_events = group["d0PushEvents"]
+    d0_click_users = group["d0ClickUsers"]
+    d0_click_events = group["d0ClickEvents"]
+    d1_push_users = group["d1PushUsers"]
+    d1_push_events = group["d1PushEvents"]
+    d1_click_users = group["d1ClickUsers"]
+    d1_click_events = group["d1ClickEvents"]
+
+    return {
+        "firstOpen": first_open,
+        "authorizedUsers": authorized_users,
+        "authorizationRate": (authorized_users / first_open) if first_open else 0,
+        "uninstallUsers": uninstall_users,
+        "uninstallRate": (uninstall_users / first_open) if first_open else 0,
+        "d0PushUsers": d0_push_users,
+        "d0PushEvents": d0_push_events,
+        "d0PenetrationRate": (d0_push_users / first_open) if first_open else 0,
+        "d0AvgSentPerUser": (d0_push_events / d0_push_users) if d0_push_users else 0,
+        "d0ClickUsers": d0_click_users,
+        "d0ClickEvents": d0_click_events,
+        "d0UserClickRate": (d0_click_users / d0_push_users) if d0_push_users else 0,
+        "d0EventClickRate": (d0_click_events / d0_push_events) if d0_push_events else 0,
+        "d0AvgClickPerUser": (d0_click_events / d0_click_users) if d0_click_users else 0,
+        "d1PushUsers": d1_push_users,
+        "d1PushEvents": d1_push_events,
+        "d1PenetrationRate": (d1_push_users / first_open) if first_open else 0,
+        "d1AvgSentPerUser": (d1_push_events / d1_push_users) if d1_push_users else 0,
+        "d1ClickUsers": d1_click_users,
+        "d1ClickEvents": d1_click_events,
+        "d1UserClickRate": (d1_click_users / d1_push_users) if d1_push_users else 0,
+        "d1EventClickRate": (d1_click_events / d1_push_events) if d1_push_events else 0,
+        "d1AvgClickPerUser": (d1_click_events / d1_click_users) if d1_click_users else 0,
+    }
+
+
 def parse_dataframe(df: pd.DataFrame) -> Dict:
     base_meta = _extract_base_meta(df)
     version = str(base_meta["version"])
@@ -126,8 +184,9 @@ def parse_dataframe(df: pd.DataFrame) -> Dict:
     authorized_users = int(base_meta["authorizedUsers"])
     uninstall_users = int(base_meta["uninstallUsers"])
 
-    report_date_text = _extract_report_date(df)
-    report_date = datetime.strptime(report_date_text, "%Y%m%d").date()
+    date_start, date_end = _extract_date_range(df)
+    batch = f"{date_start}-{date_end}"
+    report_date = datetime.strptime(date_end, "%Y%m%d").date()
 
     header_row = _find_event_header_row(df)
     if header_row < 1:
@@ -151,22 +210,9 @@ def parse_dataframe(df: pd.DataFrame) -> Dict:
         raise ValueError("未识别到第 N 天的活跃用户/事件数列映射。")
 
     max_n = max(n_event_col.keys())
-
-    def empty_group() -> Dict[str, int]:
-        return {
-            "d0PushUsers": 0,
-            "d0PushEvents": 0,
-            "d0ClickUsers": 0,
-            "d0ClickEvents": 0,
-            "d1PushUsers": 0,
-            "d1PushEvents": 0,
-            "d1ClickUsers": 0,
-            "d1ClickEvents": 0,
-        }
-
-    grouped_by_day = defaultdict(empty_group)
-    grouped_by_content = defaultdict(empty_group)
-    grouped_by_vdc = defaultdict(empty_group)
+    grouped_by_day = defaultdict(_empty_group)
+    grouped_by_content = defaultdict(_empty_group)
+    grouped_by_version = defaultdict(_empty_group)
 
     def read_value(row_values: List, n_value: int, mapping: Dict[int, int]) -> int:
         col = mapping.get(n_value)
@@ -195,11 +241,13 @@ def parse_dataframe(df: pd.DataFrame) -> Dict:
         d1_active = read_value(row_values, d1_n, n_active_col)
         d1_event = read_value(row_values, d1_n, n_event_col)
 
-        day_key = first_visit_day
         content_key = _notify_group(notify_name)
-        vdc_key: Tuple[str, str, str] = (version, first_visit_day, content_key)
+        day_key: Tuple[str, str, str] = (batch, version, first_visit_day)
+        content_group_key: Tuple[str, str, str] = (batch, version, content_key)
+        version_key: Tuple[str, str] = (batch, version)
+
+        targets = [grouped_by_day[day_key], grouped_by_content[content_group_key], grouped_by_version[version_key]]
         lowered_event = event_name.lower()
-        targets = [grouped_by_day[day_key], grouped_by_content[content_key], grouped_by_vdc[vdc_key]]
 
         if "push" in lowered_event:
             for group in targets:
@@ -215,70 +263,32 @@ def parse_dataframe(df: pd.DataFrame) -> Dict:
                 group["d1ClickUsers"] += d1_active
                 group["d1ClickEvents"] += d1_event
 
-    def build_metrics(group: Dict[str, int]) -> Dict:
-        d0_push_users = group["d0PushUsers"]
-        d0_push_events = group["d0PushEvents"]
-        d0_click_users = group["d0ClickUsers"]
-        d0_click_events = group["d0ClickEvents"]
-        d1_push_users = group["d1PushUsers"]
-        d1_push_events = group["d1PushEvents"]
-        d1_click_users = group["d1ClickUsers"]
-        d1_click_events = group["d1ClickEvents"]
-
-        return {
-            "firstOpen": first_open,
-            "authorizedUsers": authorized_users,
-            "authorizationRate": (authorized_users / first_open) if first_open else 0,
-            "uninstallUsers": uninstall_users,
-            "uninstallRate": (uninstall_users / first_open) if first_open else 0,
-            "d0PushUsers": d0_push_users,
-            "d0PushEvents": d0_push_events,
-            "d0PenetrationRate": (d0_push_users / first_open) if first_open else 0,
-            "d0AvgSentPerUser": (d0_push_events / d0_push_users) if d0_push_users else 0,
-            "d0ClickUsers": d0_click_users,
-            "d0ClickEvents": d0_click_events,
-            "d0UserClickRate": (d0_click_users / d0_push_users) if d0_push_users else 0,
-            "d0EventClickRate": (d0_click_events / d0_push_events) if d0_push_events else 0,
-            "d0AvgClickPerUser": (d0_click_events / d0_click_users) if d0_click_users else 0,
-            "d1PushUsers": d1_push_users,
-            "d1PushEvents": d1_push_events,
-            "d1PenetrationRate": (d1_push_users / first_open) if first_open else 0,
-            "d1AvgSentPerUser": (d1_push_events / d1_push_users) if d1_push_users else 0,
-            "d1ClickUsers": d1_click_users,
-            "d1ClickEvents": d1_click_events,
-            "d1UserClickRate": (d1_click_users / d1_push_users) if d1_push_users else 0,
-            "d1EventClickRate": (d1_click_events / d1_push_events) if d1_push_events else 0,
-            "d1AvgClickPerUser": (d1_click_events / d1_click_users) if d1_click_users else 0,
-        }
-
     daily_rows: List[Dict] = []
-    for day, group in grouped_by_day.items():
-        row = {"version": version, "day": day}
-        row.update(build_metrics(group))
+    for (row_batch, row_version, day), group in grouped_by_day.items():
+        row = {"batch": row_batch, "version": row_version, "day": day}
+        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users))
         daily_rows.append(row)
 
     content_rows: List[Dict] = []
-    for content, group in grouped_by_content.items():
+    for (row_batch, row_version, content), group in grouped_by_content.items():
         if content == "(not set)":
             continue
-        row = {"version": version, "content": content}
-        row.update(build_metrics(group))
+        row = {"batch": row_batch, "version": row_version, "content": content}
+        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users))
         content_rows.append(row)
 
-    version_day_content_rows: List[Dict] = []
-    for (row_version, day, content), group in grouped_by_vdc.items():
-        if content == "(not set)":
-            continue
-        row = {"version": row_version, "day": day, "content": content}
-        row.update(build_metrics(group))
-        version_day_content_rows.append(row)
+    version_rows: List[Dict] = []
+    for (row_batch, row_version), group in grouped_by_version.items():
+        row = {"batch": row_batch, "version": row_version}
+        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users))
+        version_rows.append(row)
 
-    daily_rows.sort(key=lambda item: (item["version"], item["day"]))
-    content_rows.sort(key=lambda item: (item["version"], item["content"]))
-    version_day_content_rows.sort(key=lambda item: (item["version"], item["day"], item["content"]))
+    daily_rows.sort(key=lambda item: (item["batch"], item["version"], item["day"]))
+    content_rows.sort(key=lambda item: (item["batch"], item["version"], item["content"]))
+    version_rows.sort(key=lambda item: (item["batch"], item["version"]))
 
     return {
         "dailyByDay": daily_rows,
         "byContent": content_rows,
-        "byVersionDayContent": version_day_content_rows,
+        "byVersionSummary": version_rows,
     }

@@ -1,4 +1,5 @@
 export type AnalysisRow = {
+  batch: string;
   version: string;
   day?: string;
   content?: string;
@@ -30,7 +31,7 @@ export type AnalysisRow = {
 export type ParsedSheets = {
   dailyByDay: AnalysisRow[];
   byContent: AnalysisRow[];
-  byVersionDayContent: AnalysisRow[];
+  byVersionSummary: AnalysisRow[];
 };
 
 export type ParsedFileResult = {
