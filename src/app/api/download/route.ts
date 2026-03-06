@@ -59,20 +59,27 @@ function toSheetRows(
 
 function toWorkbook(fileResult: ParsedFileResult): ArrayBuffer {
   const workbook = XLSX.utils.book_new();
-  const sheet1Rows = toSheetRows(fileResult.sheets.dailyByDay, [
-    { key: "batch", label: "批次" },
+  const hasBatch = fileResult.sheets.dailyByDay.some((row) => Boolean(row.batch));
+  const dayLead: Array<{ key: "batch" | "version" | "day" | "content"; label: string }> = [
     { key: "version", label: "版本号" },
     { key: "day", label: "天" }
-  ]);
-  const sheet2Rows = toSheetRows(fileResult.sheets.byContent, [
-    { key: "batch", label: "批次" },
+  ];
+  const contentLead: Array<{ key: "batch" | "version" | "day" | "content"; label: string }> = [
     { key: "version", label: "版本号" },
     { key: "content", label: "内容" }
-  ]);
-  const sheet3Rows = toSheetRows(fileResult.sheets.byVersionSummary, [
-    { key: "batch", label: "批次" },
-    { key: "version", label: "版本号" },
-  ]);
+  ];
+  const versionLead: Array<{ key: "batch" | "version" | "day" | "content"; label: string }> = [
+    { key: "version", label: "版本号" }
+  ];
+  if (hasBatch) {
+    dayLead.unshift({ key: "batch", label: "批次" });
+    contentLead.unshift({ key: "batch", label: "批次" });
+    versionLead.unshift({ key: "batch", label: "批次" });
+  }
+
+  const sheet1Rows = toSheetRows(fileResult.sheets.dailyByDay, dayLead);
+  const sheet2Rows = toSheetRows(fileResult.sheets.byContent, contentLead);
+  const sheet3Rows = toSheetRows(fileResult.sheets.byVersionSummary, versionLead);
 
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheet1Rows), "分日 PUSH 分析");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheet2Rows), "PUSH 内容分析");

@@ -14,6 +14,7 @@ const decimalFormatter = new Intl.NumberFormat("en-US", {
 });
 
 type TableKey = "dailyByDay" | "byContent" | "byVersionSummary";
+type LeadColumn = { key: "batch" | "version" | "day" | "content"; label: string };
 
 const PATH_COLUMNS: Array<{ key: keyof AnalysisRow; label: string; percent?: boolean; decimal?: boolean }> = [
   { key: "firstOpen", label: "first open" },
@@ -60,27 +61,29 @@ export function ResultTable({ result }: ResultTableProps) {
     byVersionSummary: "分版本汇总分析"
   };
   const rows = safeSheets[activeTable];
+  const hasBatch = useMemo(() => rows.some((row) => Boolean(row.batch)), [rows]);
 
   const leadingColumns = useMemo(() => {
     if (activeTable === "dailyByDay") {
-      return [
-        { key: "batch" as const, label: "批次" },
-        { key: "version" as const, label: "版本号" },
-        { key: "day" as const, label: "天" }
+      const columns: LeadColumn[] = [
+        { key: "version", label: "版本号" },
+        { key: "day", label: "天" }
       ];
+      if (hasBatch) columns.unshift({ key: "batch" as const, label: "批次" });
+      return columns;
     }
     if (activeTable === "byContent") {
-      return [
-        { key: "batch" as const, label: "批次" },
-        { key: "version" as const, label: "版本号" },
-        { key: "content" as const, label: "内容" }
+      const columns: LeadColumn[] = [
+        { key: "version", label: "版本号" },
+        { key: "content", label: "内容" }
       ];
+      if (hasBatch) columns.unshift({ key: "batch" as const, label: "批次" });
+      return columns;
     }
-    return [
-      { key: "batch" as const, label: "批次" },
-      { key: "version" as const, label: "版本号" },
-    ];
-  }, [activeTable]);
+    const columns: LeadColumn[] = [{ key: "version", label: "版本号" }];
+    if (hasBatch) columns.unshift({ key: "batch" as const, label: "批次" });
+    return columns;
+  }, [activeTable, hasBatch]);
 
   if (!result) {
     return (
@@ -94,7 +97,7 @@ export function ResultTable({ result }: ResultTableProps) {
   return (
     <div className="card">
       <h2 style={{ marginTop: 0 }}>2) 解析结果 - {result.fileName}</h2>
-      <p className="muted">三张表：分日 PUSH 分析 / PUSH 内容分析 / 分版本 PUSH 内容分析。</p>
+      <p className="muted">三张表：分日 PUSH 分析 / PUSH 内容分析 / 分版本汇总分析。</p>
       <div className="actions" style={{ marginBottom: 12 }}>
         <button disabled={activeTable === "dailyByDay"} onClick={() => setActiveTable("dailyByDay")}>
           分日 PUSH 分析

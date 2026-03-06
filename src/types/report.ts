@@ -1,5 +1,5 @@
 export type AnalysisRow = {
-  batch: string;
+  batch?: string;
   version: string;
   day?: string;
   content?: string;

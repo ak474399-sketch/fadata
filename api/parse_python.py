@@ -104,6 +104,7 @@ def _parse_files_impl():
     if not files:
         return jsonify({"results": [], "errors": [{"fileName": "-", "message": "未上传文件。"}]}), 400
 
+    merge_mode = str(request.form.get("mergeMode", "false")).lower() == "true"
     results = []
     errors = []
 
@@ -111,12 +112,22 @@ def _parse_files_impl():
         try:
             payload = file.read()
             dataframe = read_table(file.filename, payload)
-            sheets = parse_dataframe(dataframe)
+            parsed = parse_dataframe(dataframe, include_batch=merge_mode)
+            sheets = {
+                "dailyByDay": parsed["dailyByDay"],
+                "byContent": parsed["byContent"],
+                "byVersionSummary": parsed["byVersionSummary"],
+            }
             results.append({"fileName": file.filename, "sheets": sheets})
+            issues = parsed.get("issues", [])
+            if issues:
+                preview = "；".join(issues[:10])
+                suffix = "" if len(issues) <= 10 else f"；其余 {len(issues) - 10} 条已省略"
+                errors.append({"fileName": file.filename, "message": f"检测到数据问题：{preview}{suffix}"})
         except Exception as exc:
             errors.append({"fileName": file.filename, "message": str(exc)})
 
-    if len(results) > 1:
+    if merge_mode and len(results) > 1:
         results.append(_build_merged_result(results))
 
     return jsonify({"results": results, "errors": errors})

@@ -7,7 +7,9 @@ type UploadPanelProps = {
   parseProgress: number;
   files: File[];
   onFileChange: (files: FileList | null) => void;
+  onRemoveFile: (fileName: string) => void;
   onParse: () => void;
+  onMergeParse: () => void;
   canParse: boolean;
 };
 
@@ -16,13 +18,16 @@ export function UploadPanel({
   parseProgress,
   files,
   onFileChange,
+  onRemoveFile,
   onParse,
+  onMergeParse,
   canParse
 }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [samplePassword, setSamplePassword] = useState("");
   const [sampleError, setSampleError] = useState("");
+  const [pendingDeleteFileName, setPendingDeleteFileName] = useState<string>("");
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     onFileChange(event.target.files);
@@ -112,6 +117,9 @@ export function UploadPanel({
             <button disabled={!canParse || uploading} onClick={onParse}>
               {uploading ? "解析中..." : "开始解析"}
             </button>
+            <button disabled={!canParse || uploading} onClick={onMergeParse}>
+              并表解析
+            </button>
           </div>
           {uploading && (
             <div style={{ marginTop: 12 }}>
@@ -129,13 +137,43 @@ export function UploadPanel({
           <div style={{ marginTop: 10 }}>
             {files.length === 0 && <p className="muted">暂无文件</p>}
             {files.map((file) => (
-              <span className="chip" key={file.name}>
+              <span className="chip chip-removable" key={file.name}>
                 {file.name}
+                <button
+                  type="button"
+                  className="chip-remove-btn"
+                  onClick={() => setPendingDeleteFileName(file.name)}
+                  aria-label={`删除 ${file.name}`}
+                >
+                  X
+                </button>
               </span>
             ))}
           </div>
         </div>
       </div>
+
+      {pendingDeleteFileName && (
+        <div className="modal-backdrop" onClick={() => setPendingDeleteFileName("")}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3 style={{ marginTop: 0, marginBottom: 8 }}>确认删除文件</h3>
+            <p className="muted" style={{ marginBottom: 16 }}>
+              确定删除已上传文件 {pendingDeleteFileName} 吗？
+            </p>
+            <div className="actions" style={{ marginTop: 0 }}>
+              <button onClick={() => setPendingDeleteFileName("")}>取消</button>
+              <button
+                onClick={() => {
+                  onRemoveFile(pendingDeleteFileName);
+                  setPendingDeleteFileName("");
+                }}
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

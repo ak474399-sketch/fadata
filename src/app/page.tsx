@@ -5,6 +5,17 @@ import { ResultTable } from "@/components/result-table";
 import { UploadPanel } from "@/components/upload-panel";
 import type { ParseResponse, ParsedFileResult } from "@/types/report";
 
+const REPORT_TYPES = [
+  "PUSH 分析报告",
+  "版本迭代报告",
+  "产品漏斗分析",
+  "商业化分析",
+  "周报",
+  "月报",
+  "半年报",
+  "年报"
+] as const;
+
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -24,6 +35,7 @@ export default function HomePage() {
   const [showCelebration, setShowCelebration] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  const [showMergeTipsModal, setShowMergeTipsModal] = useState(false);
 
   const selectedResult = useMemo<ParsedFileResult | undefined>(
     () => data.results.find((item) => item.fileName === selectedFileName) ?? data.results[0],
@@ -37,14 +49,24 @@ export default function HomePage() {
     setReportMsg("");
   };
 
-  const handleParse = async () => {
+  const handleRemoveFile = (fileName: string) => {
+    setFiles((prev) => prev.filter((file) => file.name !== fileName));
+    setReportMsg("");
+  };
+
+  const handleParse = async (mergeMode = false) => {
     if (!files.length) return;
+    if (mergeMode && files.length <= 1) {
+      setShowMergeTipsModal(true);
+      return;
+    }
     setUploading(true);
     setParseProgress(8);
     setReportMsg("");
     setData({ results: [], errors: [] });
     const form = new FormData();
     for (const file of files) form.append("files", file);
+    form.append("mergeMode", mergeMode ? "true" : "false");
     const progressTimer = window.setInterval(() => {
       setParseProgress((prev) => (prev >= 90 ? prev : prev + 6));
     }, 250);
@@ -114,12 +136,12 @@ export default function HomePage() {
     downloadBlob(blob, fileName);
   };
 
-  const handleGenerateReport = async () => {
+  const handleGenerateReport = async (reportType: (typeof REPORT_TYPES)[number]) => {
     if (!selectedResult) return;
     const response = await fetch("/api/report", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileName: selectedResult.fileName, sheets: selectedResult.sheets })
+      body: JSON.stringify({ fileName: selectedResult.fileName, sheets: selectedResult.sheets, reportType })
     });
     const result = (await response.json()) as { message: string };
     setReportMsg(result.message);
@@ -152,7 +174,9 @@ export default function HomePage() {
         parseProgress={parseProgress}
         files={files}
         onFileChange={handleFileChange}
-        onParse={handleParse}
+        onRemoveFile={handleRemoveFile}
+        onParse={() => handleParse(false)}
+        onMergeParse={() => handleParse(true)}
         canParse={canParse}
       />
 
@@ -202,9 +226,11 @@ export default function HomePage() {
         <h2 style={{ marginTop: 0 }}>3) 生成报告（占位）</h2>
         <p className="muted">下一阶段接入 Gemini API。当前仅返回占位消息和调用链路。</p>
         <div className="actions">
-          <button disabled={!selectedResult} onClick={handleGenerateReport}>
-            生成报告
-          </button>
+          {REPORT_TYPES.map((reportType) => (
+            <button key={reportType} disabled={!selectedResult} onClick={() => handleGenerateReport(reportType)}>
+              {reportType}
+            </button>
+          ))}
         </div>
         {reportMsg && <p style={{ marginBottom: 0 }}>{reportMsg}</p>}
       </div>
@@ -218,6 +244,20 @@ export default function HomePage() {
             </p>
             <div className="actions" style={{ marginTop: 0 }}>
               <button onClick={() => setShowSuccessModal(false)}>我知道了</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMergeTipsModal && (
+        <div className="modal-backdrop" onClick={() => setShowMergeTipsModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3 style={{ marginTop: 0, marginBottom: 8 }}>并表解析提示</h3>
+            <p className="muted" style={{ marginBottom: 16 }}>
+              并表解析需要至少上传 2 张表，请先补充文件后再试。
+            </p>
+            <div className="actions" style={{ marginTop: 0 }}>
+              <button onClick={() => setShowMergeTipsModal(false)}>好的</button>
             </div>
           </div>
         </div>

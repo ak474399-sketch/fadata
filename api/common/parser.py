@@ -177,7 +177,7 @@ def _build_metrics(group: Dict[str, int], first_open: int, authorized_users: int
     }
 
 
-def parse_dataframe(df: pd.DataFrame) -> Dict:
+def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
     base_meta = _extract_base_meta(df)
     version = str(base_meta["version"])
     first_open = int(base_meta["firstOpen"])
@@ -213,6 +213,7 @@ def parse_dataframe(df: pd.DataFrame) -> Dict:
     grouped_by_day = defaultdict(_empty_group)
     grouped_by_content = defaultdict(_empty_group)
     grouped_by_version = defaultdict(_empty_group)
+    row_issues: List[str] = []
 
     def read_value(row_values: List, n_value: int, mapping: Dict[int, int]) -> int:
         col = mapping.get(n_value)
@@ -228,7 +229,19 @@ def parse_dataframe(df: pd.DataFrame) -> Dict:
         event_name = str(row_values[0]).strip() if row_values[0] is not None else ""
         first_visit_day = str(row_values[1]).strip() if row_values[1] is not None else ""
         notify_name = str(row_values[2]).strip() if row_values[2] is not None else ""
-        if not event_name or not DATE_PATTERN.match(first_visit_day):
+        csv_row_no = row_index + 1
+
+        if not event_name and not first_visit_day and not notify_name:
+            continue
+
+        if not event_name:
+            row_issues.append(f"第 {csv_row_no} 行事件名称缺失")
+            continue
+        if not DATE_PATTERN.match(first_visit_day):
+            row_issues.append(f"第 {csv_row_no} 行首次访问日期不合法：{first_visit_day or '空值'}")
+            continue
+        if not notify_name:
+            row_issues.append(f"第 {csv_row_no} 行通知内容缺失")
             continue
 
         first_day = datetime.strptime(first_visit_day, "%Y%m%d").date()
@@ -265,7 +278,9 @@ def parse_dataframe(df: pd.DataFrame) -> Dict:
 
     daily_rows: List[Dict] = []
     for (row_batch, row_version, day), group in grouped_by_day.items():
-        row = {"batch": row_batch, "version": row_version, "day": day}
+        row = {"version": row_version, "day": day}
+        if include_batch:
+            row["batch"] = row_batch
         row.update(_build_metrics(group, first_open, authorized_users, uninstall_users))
         daily_rows.append(row)
 
@@ -273,22 +288,32 @@ def parse_dataframe(df: pd.DataFrame) -> Dict:
     for (row_batch, row_version, content), group in grouped_by_content.items():
         if content == "(not set)":
             continue
-        row = {"batch": row_batch, "version": row_version, "content": content}
+        row = {"version": row_version, "content": content}
+        if include_batch:
+            row["batch"] = row_batch
         row.update(_build_metrics(group, first_open, authorized_users, uninstall_users))
         content_rows.append(row)
 
     version_rows: List[Dict] = []
     for (row_batch, row_version), group in grouped_by_version.items():
-        row = {"batch": row_batch, "version": row_version}
+        row = {"version": row_version}
+        if include_batch:
+            row["batch"] = row_batch
         row.update(_build_metrics(group, first_open, authorized_users, uninstall_users))
         version_rows.append(row)
 
-    daily_rows.sort(key=lambda item: (item["batch"], item["version"], item["day"]))
-    content_rows.sort(key=lambda item: (item["batch"], item["version"], item["content"]))
-    version_rows.sort(key=lambda item: (item["batch"], item["version"]))
+    if include_batch:
+        daily_rows.sort(key=lambda item: (item.get("batch", ""), item["version"], item["day"]))
+        content_rows.sort(key=lambda item: (item.get("batch", ""), item["version"], item["content"]))
+        version_rows.sort(key=lambda item: (item.get("batch", ""), item["version"]))
+    else:
+        daily_rows.sort(key=lambda item: (item["version"], item["day"]))
+        content_rows.sort(key=lambda item: (item["version"], item["content"]))
+        version_rows.sort(key=lambda item: (item["version"],))
 
     return {
         "dailyByDay": daily_rows,
         "byContent": content_rows,
         "byVersionSummary": version_rows,
+        "issues": row_issues,
     }
