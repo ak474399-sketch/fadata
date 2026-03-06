@@ -49,26 +49,17 @@ function formatCell(value: number, percent?: boolean, decimal?: boolean): string
 
 export function ResultTable({ result }: ResultTableProps) {
   const [activeTable, setActiveTable] = useState<TableKey>("dailyByDay");
+  const safeSheets = result?.sheets ?? { dailyByDay: [], byContent: [], byVersionDayContent: [] };
 
   useEffect(() => {
     setActiveTable("dailyByDay");
   }, [result?.fileName]);
-
-  if (!result) {
-    return (
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>2) 解析结果</h2>
-        <p className="muted">暂无数据，请先上传文件并解析。</p>
-      </div>
-    );
-  }
-
-  const rows = result.sheets[activeTable];
   const titleMap: Record<TableKey, string> = {
     dailyByDay: "分日 PUSH 分析",
     byContent: "PUSH 内容分析",
     byVersionDayContent: "分版本 PUSH 内容分析"
   };
+  const rows = safeSheets[activeTable];
 
   const leadingColumns = useMemo(() => {
     if (activeTable === "dailyByDay") {
@@ -89,6 +80,15 @@ export function ResultTable({ result }: ResultTableProps) {
       { key: "content" as const, label: "内容" }
     ];
   }, [activeTable]);
+
+  if (!result) {
+    return (
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>2) 解析结果</h2>
+        <p className="muted">暂无数据，请先上传文件并解析。</p>
+      </div>
+    );
+  }
 
   return (
     <div className="card">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { ResultTable } from "@/components/result-table";
 import { UploadPanel } from "@/components/upload-panel";
 import type { ParseResponse, ParsedFileResult } from "@/types/report";
@@ -21,6 +21,9 @@ export default function HomePage() {
   const [selectedFileName, setSelectedFileName] = useState<string>("");
   const [reportMsg, setReportMsg] = useState("");
   const [parseProgress, setParseProgress] = useState(0);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
   const selectedResult = useMemo<ParsedFileResult | undefined>(
     () => data.results.find((item) => item.fileName === selectedFileName) ?? data.results[0],
@@ -65,6 +68,18 @@ export default function HomePage() {
       setData(result);
       if (result.results.length) {
         setSelectedFileName(result.results[0].fileName);
+        const totalRows = result.results.reduce((acc, item) => {
+          return (
+            acc +
+            item.sheets.dailyByDay.length +
+            item.sheets.byContent.length +
+            item.sheets.byVersionDayContent.length
+          );
+        }, 0);
+        setSuccessMessage(`解析完成：${result.results.length} 个文件，共 ${totalRows} 行分析数据。`);
+        setShowSuccessModal(true);
+        setShowCelebration(true);
+        window.setTimeout(() => setShowCelebration(false), 2200);
       }
       setParseProgress(100);
     } catch {
@@ -112,7 +127,24 @@ export default function HomePage() {
 
   return (
     <main className="container">
-      <h1 className="title">Next + Python 通知数据解析服务</h1>
+      {showCelebration && (
+        <div className="celebration-layer" aria-hidden="true">
+          {Array.from({ length: 28 }).map((_, index) => (
+            <span
+              key={index}
+              className="confetti-piece"
+              style={
+                {
+                  left: `${(index * 17) % 100}%`,
+                  animationDelay: `${(index % 7) * 0.08}s`,
+                  animationDuration: `${1.8 + (index % 5) * 0.25}s`
+                } as CSSProperties
+              }
+            />
+          ))}
+        </div>
+      )}
+      <h1 className="title">峰哥帮你出报告</h1>
       <p className="muted">先完成上传、解析与下载，报告生成功能当前为占位接口。</p>
 
       <UploadPanel
@@ -176,6 +208,20 @@ export default function HomePage() {
         </div>
         {reportMsg && <p style={{ marginBottom: 0 }}>{reportMsg}</p>}
       </div>
+
+      {showSuccessModal && (
+        <div className="modal-backdrop" onClick={() => setShowSuccessModal(false)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3 style={{ marginTop: 0, marginBottom: 8 }}>解析成功</h3>
+            <p className="muted" style={{ marginBottom: 16 }}>
+              {successMessage}
+            </p>
+            <div className="actions" style={{ marginTop: 0 }}>
+              <button onClick={() => setShowSuccessModal(false)}>我知道了</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

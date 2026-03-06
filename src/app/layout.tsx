@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "FA Data Parser",
+  title: "峰哥帮你出报告",
   description: "Upload and transform cohort notification data"
 };
 
