@@ -25,6 +25,20 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function parseDownloadFileName(contentDisposition: string | null, fallback: string): string {
+  if (!contentDisposition) return fallback;
+  const encodedMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (encodedMatch?.[1]) {
+    try {
+      return decodeURIComponent(encodedMatch[1]);
+    } catch {
+      // ignore decode errors and continue to fallback parsing
+    }
+  }
+  const plainMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
+  return plainMatch?.[1] ?? fallback;
+}
+
 function escapeCsvCell(value: string): string {
   const safe = value.replaceAll("\"", "\"\"");
   return /[",\n]/.test(safe) ? `"${safe}"` : safe;
@@ -174,11 +188,13 @@ export default function HomePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    if (!response.ok) return;
+    if (!response.ok) {
+      setReportMsg(`下载失败（HTTP ${response.status}），请重试。`);
+      return;
+    }
     const blob = await response.blob();
     const fallback = mode === "single" ? "parsed_result.xlsx" : "parsed_results.zip";
-    const headerName = response.headers.get("content-disposition");
-    const fileName = headerName?.split("filename=")[1]?.replaceAll("\"", "") ?? fallback;
+    const fileName = parseDownloadFileName(response.headers.get("content-disposition"), fallback);
     downloadBlob(blob, fileName);
   };
 

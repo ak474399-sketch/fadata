@@ -93,6 +93,17 @@ function withXlsxName(fileName: string): string {
   return `${base}_parsed.xlsx`;
 }
 
+function toAsciiFallbackName(fileName: string): string {
+  const sanitized = fileName.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
+  return sanitized || "parsed_result.xlsx";
+}
+
+function buildAttachmentHeader(fileName: string): string {
+  const asciiFallback = toAsciiFallbackName(fileName);
+  const encoded = encodeURIComponent(fileName);
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
 export async function POST(request: Request) {
   const payload = (await request.json()) as DownloadPayload;
   if (!payload.results?.length) {
@@ -107,7 +118,7 @@ export async function POST(request: Request) {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${withXlsxName(target.fileName)}"`
+        "Content-Disposition": buildAttachmentHeader(withXlsxName(target.fileName))
       }
     });
   }
