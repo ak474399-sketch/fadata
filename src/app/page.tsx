@@ -124,7 +124,11 @@ export default function HomePage() {
 
       setData(result);
       if (result.results.length) {
-        setSelectedFileName(result.results[0].fileName);
+        const preferred =
+          mergeMode
+            ? result.results.find((item) => item.fileName === "并表分析")?.fileName ?? result.results[0].fileName
+            : result.results[0].fileName;
+        setSelectedFileName(preferred);
         const totalRows = result.results.reduce((acc, item) => {
           return (
             acc +
