@@ -3,7 +3,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { ResultTable } from "@/components/result-table";
 import { UploadPanel } from "@/components/upload-panel";
-import type { ParseResponse, ParsedFileResult } from "@/types/report";
+import type { ParseError, ParseResponse, ParsedFileResult } from "@/types/report";
 
 const REPORT_TYPES = [
   "PUSH 分析报告",
@@ -25,8 +25,24 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function escapeCsvCell(value: string): string {
+  const safe = value.replaceAll("\"", "\"\"");
+  return /[",\n]/.test(safe) ? `"${safe}"` : safe;
+}
+
+function toErrorCsv(errors: ParseError[]): string {
+  const header = ["文件名", "错误码", "阶段", "错误信息"];
+  const rows = errors.map((item) => [
+    item.fileName,
+    item.code,
+    item.stage ?? "",
+    item.message
+  ]);
+  return [header, ...rows].map((row) => row.map((cell) => escapeCsvCell(String(cell))).join(",")).join("\n");
+}
+
 export default function HomePage() {
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<Array<{ id: string; file: File }>>([]);
   const [uploading, setUploading] = useState(false);
   const [data, setData] = useState<ParseResponse>({ results: [], errors: [] });
   const [selectedFileName, setSelectedFileName] = useState<string>("");
@@ -45,12 +61,19 @@ export default function HomePage() {
   const canParse = files.length > 0;
 
   const handleFileChange = (incoming: FileList | null) => {
-    setFiles(incoming ? Array.from(incoming) : []);
+    const next =
+      incoming?.length
+        ? Array.from(incoming).map((file, index) => ({
+            id: `${file.name}-${file.size}-${file.lastModified}-${index}-${Date.now()}`,
+            file
+          }))
+        : [];
+    setFiles(next);
     setReportMsg("");
   };
 
-  const handleRemoveFile = (fileName: string) => {
-    setFiles((prev) => prev.filter((file) => file.name !== fileName));
+  const handleRemoveFile = (fileId: string) => {
+    setFiles((prev) => prev.filter((file) => file.id !== fileId));
     setReportMsg("");
   };
 
@@ -65,7 +88,7 @@ export default function HomePage() {
     setReportMsg("");
     setData({ results: [], errors: [] });
     const form = new FormData();
-    for (const file of files) form.append("files", file);
+    for (const item of files) form.append("files", item.file);
     form.append("mergeMode", mergeMode ? "true" : "false");
     const progressTimer = window.setInterval(() => {
       setParseProgress((prev) => (prev >= 90 ? prev : prev + 6));
@@ -79,12 +102,24 @@ export default function HomePage() {
       } catch {
         result = {
           results: [],
-          errors: [{ fileName: "-", message: "解析接口返回异常，无法解析响应内容。" }]
+          errors: [
+            {
+              fileName: "-",
+              code: "E_PARSE_BAD_RESPONSE",
+              stage: "upstream",
+              message: "解析接口返回异常，无法解析响应内容。"
+            }
+          ]
         };
       }
 
       if (!response.ok && result.errors.length === 0) {
-        result.errors.push({ fileName: "-", message: `解析失败（HTTP ${response.status}）。` });
+        result.errors.push({
+          fileName: "-",
+          code: "E_PARSE_HTTP",
+          stage: "upstream",
+          message: `解析失败（HTTP ${response.status}）。`
+        });
       }
 
       setData(result);
@@ -107,7 +142,14 @@ export default function HomePage() {
     } catch {
       setData({
         results: [],
-        errors: [{ fileName: "-", message: "网络异常，解析请求未成功发出。" }]
+        errors: [
+          {
+            fileName: "-",
+            code: "E_PARSE_NETWORK",
+            stage: "network",
+            message: "网络异常，解析请求未成功发出。"
+          }
+        ]
       });
       setParseProgress(100);
     } finally {
@@ -147,6 +189,14 @@ export default function HomePage() {
     setReportMsg(result.message);
   };
 
+  const handleDownloadErrors = () => {
+    if (data.errors.length === 0) return;
+    const csv = toErrorCsv(data.errors);
+    const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8;" });
+    const stamp = new Date().toISOString().slice(0, 19).replaceAll(":", "").replace("T", "_");
+    downloadBlob(blob, `parse_errors_${stamp}.csv`);
+  };
+
   return (
     <main className="container">
       {showCelebration && (
@@ -172,7 +222,7 @@ export default function HomePage() {
       <UploadPanel
         uploading={uploading}
         parseProgress={parseProgress}
-        files={files}
+        files={files.map((item) => ({ id: item.id, name: item.file.name }))}
         onFileChange={handleFileChange}
         onRemoveFile={handleRemoveFile}
         onParse={() => handleParse(false)}
@@ -211,10 +261,15 @@ export default function HomePage() {
 
       {data.errors.length > 0 && (
         <div className="card">
-          <h3 style={{ marginTop: 0 }}>解析异常</h3>
+          <div className="result-header">
+            <h3 style={{ marginTop: 0, marginBottom: 0 }}>解析异常</h3>
+            <div className="actions" style={{ marginTop: 0 }}>
+              <button onClick={handleDownloadErrors}>下载错误明细 CSV</button>
+            </div>
+          </div>
           {data.errors.map((error) => (
-            <p key={`${error.fileName}-${error.message}`} className="muted">
-              {error.fileName}: {error.message}
+            <p key={`${error.fileName}-${error.code}-${error.message}`} className="muted">
+              [{error.code}] {error.fileName} ({error.stage ?? "parse"}): {error.message}
             </p>
           ))}
         </div>

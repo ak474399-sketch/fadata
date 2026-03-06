@@ -12,6 +12,10 @@ from common.parser import parse_dataframe, read_table
 app = Flask(__name__)
 
 
+def _build_error(file_name, code, message, stage):
+    return {"fileName": file_name, "code": code, "message": message, "stage": stage}
+
+
 def _empty_acc():
     return {
         "firstOpen": 0,
@@ -102,7 +106,15 @@ def _build_merged_result(results):
 def _parse_files_impl():
     files = request.files.getlist("files")
     if not files:
-        return jsonify({"results": [], "errors": [{"fileName": "-", "message": "未上传文件。"}]}), 400
+        return (
+            jsonify(
+                {
+                    "results": [],
+                    "errors": [_build_error("-", "E_NO_FILES", "未上传文件。", "upload")],
+                }
+            ),
+            400,
+        )
 
     merge_mode = str(request.form.get("mergeMode", "false")).lower() == "true"
     results = []
@@ -123,9 +135,16 @@ def _parse_files_impl():
             if issues:
                 preview = "；".join(issues[:10])
                 suffix = "" if len(issues) <= 10 else f"；其余 {len(issues) - 10} 条已省略"
-                errors.append({"fileName": file.filename, "message": f"检测到数据问题：{preview}{suffix}"})
+                errors.append(
+                    _build_error(
+                        file.filename,
+                        "W_ROW_ISSUES",
+                        f"检测到数据问题：{preview}{suffix}",
+                        "validate",
+                    )
+                )
         except Exception as exc:
-            errors.append({"fileName": file.filename, "message": str(exc)})
+            errors.append(_build_error(file.filename, "E_PARSE_FILE", str(exc), "parse"))
 
     if merge_mode and len(results) > 1:
         results.append(_build_merged_result(results))

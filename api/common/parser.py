@@ -11,6 +11,12 @@ import pandas as pd
 DATE_RANGE_PATTERN = re.compile(r"(\d{8})-(\d{8})")
 N_LABEL_PATTERN = re.compile(r"^\d{4}$")
 DATE_PATTERN = re.compile(r"^\d{8}$")
+ACTIVE_USER_LABELS = {"活跃用户", "活跃用户数", "activeusers", "activeuser"}
+EVENT_COUNT_LABELS = {"事件数", "事件", "eventcount", "events", "event"}
+
+
+def _normalize_label(text: str) -> str:
+    return text.replace("\ufeff", "").replace(" ", "").replace("_", "").lower().strip()
 
 
 def _normalize_int(value) -> int:
@@ -20,6 +26,10 @@ def _normalize_int(value) -> int:
         return 0
     text = str(value).strip()
     if not text:
+        return 0
+    text = text.replace(",", "").replace("，", "").replace(" ", "")
+    lowered = text.lower()
+    if lowered in {"nan", "none", "null", "-", "--"}:
         return 0
     try:
         return int(float(text))
@@ -41,7 +51,8 @@ def _extract_date_range(df: pd.DataFrame) -> Tuple[str, str]:
 def _find_event_header_row(df: pd.DataFrame) -> int:
     for row_index in range(len(df.index)):
         row = [str(item).strip() if item is not None else "" for item in df.iloc[row_index].tolist()]
-        if row and row[0] == "事件名称":
+        first_col = _normalize_label(row[0]) if row else ""
+        if first_col in {"事件名称", "eventname"}:
             return row_index
     raise ValueError("未找到表头行（事件名称）。")
 
@@ -69,7 +80,14 @@ def _build_header_index(df: pd.DataFrame) -> Dict[str, int]:
     if len(df.index) < 1:
         raise ValueError("文件为空，无法读取头部信息。")
     header_row = [str(item).strip() if item is not None else "" for item in df.iloc[0].tolist()]
-    return {label: idx for idx, label in enumerate(header_row)}
+    header_map: Dict[str, int] = {}
+    for idx, label in enumerate(header_row):
+        if not label:
+            continue
+        clean = label.replace("\ufeff", "").strip()
+        header_map[clean] = idx
+        header_map[_normalize_label(clean)] = idx
+    return header_map
 
 
 def _extract_base_meta(df: pd.DataFrame) -> Dict[str, Union[int, str]]:
@@ -78,22 +96,35 @@ def _extract_base_meta(df: pd.DataFrame) -> Dict[str, Union[int, str]]:
     header_index = _build_header_index(df)
     values = df.iloc[1].tolist()
 
-    def read_int(label: str) -> int:
-        idx = header_index.get(label)
-        if idx is None or idx >= len(values):
+    def get_idx(*labels: str) -> int:
+        for label in labels:
+            idx = header_index.get(label)
+            if idx is not None:
+                return idx
+            idx = header_index.get(_normalize_label(label))
+            if idx is not None:
+                return idx
+        return -1
+
+    def read_int(*labels: str) -> int:
+        idx = get_idx(*labels)
+        if idx < 0 or idx >= len(values):
             return 0
         return _normalize_int(values[idx])
 
-    def read_text(label: str) -> str:
-        idx = header_index.get(label)
-        if idx is None or idx >= len(values):
+    def read_text(*labels: str) -> str:
+        idx = get_idx(*labels)
+        if idx < 0 or idx >= len(values):
             return ""
         return str(values[idx]).strip() if values[idx] is not None else ""
 
-    version = read_text("版本号") or "unknown"
+    version = read_text("版本号", "版本", "version", "Version")
+    if not version:
+        raise ValueError("第 2 行版本号缺失或表头不合法（应包含“版本号”列）。")
+
     return {
         "version": version,
-        "firstOpen": read_int("first open"),
+        "firstOpen": read_int("first open", "first_open"),
         "authorizedUsers": read_int("通知授权用户数"),
         "uninstallUsers": read_int("卸载用户数"),
     }
@@ -199,12 +230,12 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
     n_event_col: Dict[int, int] = {}
     for col_index in range(3, min(len(n_row), len(field_row))):
         n_label = n_row[col_index]
-        field_label = field_row[col_index]
+        field_label = _normalize_label(field_row[col_index])
         if N_LABEL_PATTERN.match(n_label):
             n_value = int(n_label)
-            if field_label == "活跃用户":
+            if field_label in ACTIVE_USER_LABELS:
                 n_active_col[n_value] = col_index
-            elif field_label == "事件数":
+            elif field_label in EVENT_COUNT_LABELS:
                 n_event_col[n_value] = col_index
     if not n_event_col or not n_active_col:
         raise ValueError("未识别到第 N 天的活跃用户/事件数列映射。")

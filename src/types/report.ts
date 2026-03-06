@@ -41,7 +41,9 @@ export type ParsedFileResult = {
 
 export type ParseError = {
   fileName: string;
+  code: string;
   message: string;
+  stage?: "upload" | "read" | "parse" | "validate" | "upstream" | "network";
 };
 
 export type ParseResponse = {

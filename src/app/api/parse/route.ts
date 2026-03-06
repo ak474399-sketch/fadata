@@ -34,6 +34,8 @@ export async function POST(request: Request) {
           errors: [
             {
               fileName: "-",
+              code: "E_UPSTREAM_HTTP",
+              stage: "upstream",
               message: `解析服务异常（HTTP ${upstream.status}）。${upstreamErrorText || "请检查 Vercel Function 日志。"}`
             }
           ]
@@ -43,13 +45,40 @@ export async function POST(request: Request) {
     }
 
     if (payload && typeof payload === "object") {
-      return NextResponse.json(payload);
+      const safePayload = payload as {
+        results?: unknown[];
+        errors?: Array<{ fileName?: string; code?: string; message?: string; stage?: string }>;
+      };
+      const errors = Array.isArray(safePayload.errors)
+        ? safePayload.errors.map((item) => ({
+            fileName: item.fileName ?? "-",
+            code: item.code ?? "E_UNKNOWN",
+            message: item.message ?? "未知错误",
+            stage:
+              item.stage === "upload" ||
+              item.stage === "read" ||
+              item.stage === "parse" ||
+              item.stage === "validate" ||
+              item.stage === "upstream" ||
+              item.stage === "network"
+                ? item.stage
+                : "parse"
+          }))
+        : [];
+      return NextResponse.json({ results: safePayload.results ?? [], errors });
     }
 
     return NextResponse.json(
       {
         results: [],
-        errors: [{ fileName: "-", message: "解析服务返回了非 JSON 响应，请稍后重试。" }]
+        errors: [
+          {
+            fileName: "-",
+            code: "E_UPSTREAM_NON_JSON",
+            stage: "upstream",
+            message: "解析服务返回了非 JSON 响应，请稍后重试。"
+          }
+        ]
       },
       { status: 502 }
     );
@@ -60,6 +89,8 @@ export async function POST(request: Request) {
         errors: [
           {
             fileName: "-",
+            code: "E_PARSE_UNAVAILABLE",
+            stage: "network",
             message:
               "解析服务暂不可用。请在 Vercel 环境或支持 Python Function 的环境中调用 /api/parse。"
           }

@@ -5,9 +5,9 @@ import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
 type UploadPanelProps = {
   uploading: boolean;
   parseProgress: number;
-  files: File[];
+  files: Array<{ id: string; name: string }>;
   onFileChange: (files: FileList | null) => void;
-  onRemoveFile: (fileName: string) => void;
+  onRemoveFile: (fileId: string) => void;
   onParse: () => void;
   onMergeParse: () => void;
   canParse: boolean;
@@ -28,6 +28,8 @@ export function UploadPanel({
   const [samplePassword, setSamplePassword] = useState("");
   const [sampleError, setSampleError] = useState("");
   const [pendingDeleteFileName, setPendingDeleteFileName] = useState<string>("");
+  const pendingDeleteTargetName =
+    files.find((item) => item.id === pendingDeleteFileName)?.name ?? "该文件";
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     onFileChange(event.target.files);
@@ -137,12 +139,12 @@ export function UploadPanel({
           <div style={{ marginTop: 10 }}>
             {files.length === 0 && <p className="muted">暂无文件</p>}
             {files.map((file) => (
-              <span className="chip chip-removable" key={file.name}>
+              <span className="chip chip-removable" key={file.id}>
                 {file.name}
                 <button
                   type="button"
                   className="chip-remove-btn"
-                  onClick={() => setPendingDeleteFileName(file.name)}
+                  onClick={() => setPendingDeleteFileName(file.id)}
                   aria-label={`删除 ${file.name}`}
                 >
                   X
@@ -158,7 +160,7 @@ export function UploadPanel({
           <div className="modal-card" onClick={(event) => event.stopPropagation()}>
             <h3 style={{ marginTop: 0, marginBottom: 8 }}>确认删除文件</h3>
             <p className="muted" style={{ marginBottom: 16 }}>
-              确定删除已上传文件 {pendingDeleteFileName} 吗？
+              确定删除已上传文件 {pendingDeleteTargetName} 吗？
             </p>
             <div className="actions" style={{ marginTop: 0 }}>
               <button onClick={() => setPendingDeleteFileName("")}>取消</button>
