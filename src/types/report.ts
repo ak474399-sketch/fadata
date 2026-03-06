@@ -1,17 +1,41 @@
-export type ParsedRow = {
-  day: string;
-  notificationContent: string;
-  d0PushSent: number;
-  d0Click: number;
-  d0ClickRate: number;
-  d1PushSent: number;
-  d1Click: number;
-  d1ClickRate: number;
+export type AnalysisRow = {
+  version: string;
+  day?: string;
+  content?: string;
+  firstOpen: number;
+  authorizedUsers: number;
+  authorizationRate: number;
+  uninstallUsers: number;
+  uninstallRate: number;
+  d0PushUsers: number;
+  d0PushEvents: number;
+  d0PenetrationRate: number;
+  d0AvgSentPerUser: number;
+  d0ClickUsers: number;
+  d0ClickEvents: number;
+  d0UserClickRate: number;
+  d0EventClickRate: number;
+  d0AvgClickPerUser: number;
+  d1PushUsers: number;
+  d1PushEvents: number;
+  d1PenetrationRate: number;
+  d1AvgSentPerUser: number;
+  d1ClickUsers: number;
+  d1ClickEvents: number;
+  d1UserClickRate: number;
+  d1EventClickRate: number;
+  d1AvgClickPerUser: number;
+};
+
+export type ParsedSheets = {
+  dailyByDay: AnalysisRow[];
+  byContent: AnalysisRow[];
+  byVersionDayContent: AnalysisRow[];
 };
 
 export type ParsedFileResult = {
   fileName: string;
-  rows: ParsedRow[];
+  sheets: ParsedSheets;
 };
 
 export type ParseError = {

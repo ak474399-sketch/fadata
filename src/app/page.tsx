@@ -93,7 +93,7 @@ export default function HomePage() {
     });
     if (!response.ok) return;
     const blob = await response.blob();
-    const fallback = mode === "single" ? "parsed_result.csv" : "parsed_results.zip";
+    const fallback = mode === "single" ? "parsed_result.xlsx" : "parsed_results.zip";
     const headerName = response.headers.get("content-disposition");
     const fileName = headerName?.split("filename=")[1]?.replaceAll("\"", "") ?? fallback;
     downloadBlob(blob, fileName);
@@ -104,7 +104,7 @@ export default function HomePage() {
     const response = await fetch("/api/report", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileName: selectedResult.fileName, rows: selectedResult.rows })
+      body: JSON.stringify({ fileName: selectedResult.fileName, sheets: selectedResult.sheets })
     });
     const result = (await response.json()) as { message: string };
     setReportMsg(result.message);

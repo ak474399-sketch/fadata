@@ -24,8 +24,8 @@ def _parse_files_impl():
         try:
             payload = file.read()
             dataframe = read_table(file.filename, payload)
-            rows = parse_dataframe(dataframe)
-            results.append({"fileName": file.filename, "rows": rows})
+            sheets = parse_dataframe(dataframe)
+            results.append({"fileName": file.filename, "sheets": sheets})
         except Exception as exc:
             errors.append({"fileName": file.filename, "message": str(exc)})
 
