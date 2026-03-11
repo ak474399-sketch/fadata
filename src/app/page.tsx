@@ -1,10 +1,15 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { MetricConfigPanel } from "@/components/metric-config-panel";
 import { ResultTable } from "@/components/result-table";
 import { UploadPanel } from "@/components/upload-panel";
-import { createDefaultMetricConfig, type MetricConfigState } from "@/lib/metric-config";
+import {
+  METRIC_CONFIG_STORAGE_KEY,
+  createDefaultMetricConfig,
+  sanitizeMetricConfig,
+  type MetricConfigState
+} from "@/lib/metric-config";
 import type { ParseError, ParseResponse, ParsedFileResult } from "@/types/report";
 
 const REPORT_TYPES = [
@@ -69,6 +74,7 @@ export default function HomePage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [showMergeTipsModal, setShowMergeTipsModal] = useState(false);
   const [metricConfig, setMetricConfig] = useState<MetricConfigState>(createDefaultMetricConfig());
+  const [metricSaveHint, setMetricSaveHint] = useState("");
 
   const selectedResult = useMemo<ParsedFileResult | undefined>(
     () => data.results.find((item) => item.fileName === selectedFileName) ?? data.results[0],
@@ -76,6 +82,17 @@ export default function HomePage() {
   );
 
   const canParse = files.length > 0;
+
+  useEffect(() => {
+    try {
+      const cached = window.localStorage.getItem(METRIC_CONFIG_STORAGE_KEY);
+      if (!cached) return;
+      const parsed = JSON.parse(cached);
+      setMetricConfig(sanitizeMetricConfig(parsed));
+    } catch {
+      setMetricConfig(createDefaultMetricConfig());
+    }
+  }, []);
 
   const handleFileChange = (incoming: FileList | null) => {
     const next =
@@ -222,6 +239,16 @@ export default function HomePage() {
     downloadBlob(blob, `parse_errors_${stamp}.csv`);
   };
 
+  const handleSaveMetricConfig = () => {
+    try {
+      window.localStorage.setItem(METRIC_CONFIG_STORAGE_KEY, JSON.stringify(metricConfig));
+      setMetricSaveHint("已保存为默认下载/展示配置。");
+    } catch {
+      setMetricSaveHint("保存失败，请检查浏览器存储权限。");
+    }
+    window.setTimeout(() => setMetricSaveHint(""), 1800);
+  };
+
   return (
     <main className="container">
       {showCelebration && (
@@ -305,6 +332,8 @@ export default function HomePage() {
           config={metricConfig}
           onChange={setMetricConfig}
           onReset={() => setMetricConfig(createDefaultMetricConfig())}
+          onSave={handleSaveMetricConfig}
+          saveHint={metricSaveHint}
         />
       )}
 

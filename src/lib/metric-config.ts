@@ -13,6 +13,7 @@ export type MetricConfigItem = {
 };
 
 export type MetricConfigState = Record<SheetKey, MetricConfigItem[]>;
+export const METRIC_CONFIG_STORAGE_KEY = "fadata.metric-config.v1";
 
 const ANALYSIS_METRICS: MetricColumnDef[] = [
   { id: "firstOpen", label: "first open" },
@@ -79,5 +80,32 @@ export function resolveMetricColumns(sheet: SheetKey, config?: MetricConfigState
     .filter((item) => item.visible)
     .map((item) => byId.get(item.id))
     .filter((item): item is MetricColumnDef => Boolean(item));
+}
+
+export function sanitizeMetricConfig(raw: unknown): MetricConfigState {
+  const fallback = createDefaultMetricConfig();
+  if (!raw || typeof raw !== "object") return fallback;
+  const next = {} as MetricConfigState;
+  (Object.keys(METRIC_DEFINITIONS) as SheetKey[]).forEach((sheet) => {
+    const defs = METRIC_DEFINITIONS[sheet];
+    const incoming = (raw as Record<string, unknown>)[sheet];
+    if (!Array.isArray(incoming)) {
+      next[sheet] = defs.map((item) => ({ id: item.id, visible: true }));
+      return;
+    }
+    const visibleMap = new Map<string, boolean>();
+    for (const item of incoming) {
+      if (!item || typeof item !== "object") continue;
+      const id = String((item as Record<string, unknown>).id ?? "");
+      if (!id) continue;
+      visibleMap.set(id, Boolean((item as Record<string, unknown>).visible));
+    }
+    next[sheet] = defs.map((item) => ({ id: item.id, visible: visibleMap.get(item.id) ?? true }));
+    const extras = incoming
+      .map((item) => (item && typeof item === "object" ? String((item as Record<string, unknown>).id ?? "") : ""))
+      .filter((id) => id && !defs.some((def) => def.id === id));
+    extras.forEach((id) => next[sheet].push({ id, visible: visibleMap.get(id) ?? false }));
+  });
+  return next;
 }
 

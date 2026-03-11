@@ -13,9 +13,11 @@ type MetricConfigPanelProps = {
   config: MetricConfigState;
   onChange: (next: MetricConfigState) => void;
   onReset: () => void;
+  onSave: () => void;
+  saveHint?: string;
 };
 
-export function MetricConfigPanel({ config, onChange, onReset }: MetricConfigPanelProps) {
+export function MetricConfigPanel({ config, onChange, onReset, onSave, saveHint }: MetricConfigPanelProps) {
   const [activeModule, setActiveModule] = useState<SheetKey>("dailyByDay");
   const [draggingId, setDraggingId] = useState<string>("");
   const moduleItems = config[activeModule] ?? [];
@@ -39,9 +41,11 @@ export function MetricConfigPanel({ config, onChange, onReset }: MetricConfigPan
           <p className="muted">按表模块配置指标：勾选控制展示，拖动控制导出和展示顺序。</p>
         </div>
         <div className="actions" style={{ marginTop: 0 }}>
+          <button onClick={onSave}>保存为默认</button>
           <button onClick={onReset}>恢复默认</button>
         </div>
       </div>
+      {saveHint && <p className="muted" style={{ marginTop: 8 }}>{saveHint}</p>}
       <div className="actions" style={{ marginTop: 10, marginBottom: 10 }}>
         {(Object.keys(METRIC_MODULE_LABELS) as SheetKey[]).map((key) => (
           <button key={key} disabled={activeModule === key} onClick={() => setActiveModule(key)}>
