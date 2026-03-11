@@ -233,6 +233,42 @@ th {
   border-radius: 999px;
 }
 
+.metric-config-list {
+  border: 1px solid #e3e9f5;
+  border-radius: 10px;
+  max-height: 320px;
+  overflow: auto;
+  background: #fafcff;
+}
+
+.metric-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #edf1f9;
+  font-size: 13px;
+  cursor: grab;
+}
+
+.metric-item:last-child {
+  border-bottom: none;
+}
+
+.metric-item:hover {
+  background: #f2f7ff;
+}
+
+.metric-item-dragging {
+  opacity: 0.6;
+}
+
+.metric-item-grip {
+  color: #7990be;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
 .celebration-layer {
   position: fixed;
   inset: 0;

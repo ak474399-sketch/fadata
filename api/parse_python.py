@@ -87,11 +87,74 @@ def _build_merged_result(results):
     daily_rows = []
     content_rows = []
     version_rows = []
+    notify_copy_rows = []
     for result in results:
         sheets = result.get("sheets", {})
         daily_rows.extend(sheets.get("dailyByDay", []))
         content_rows.extend(sheets.get("byContent", []))
         version_rows.extend(sheets.get("byVersionSummary", []))
+        notify_copy_rows.extend(sheets.get("byNotifyCopyDay", []))
+
+    merged_notify_rows = []
+    notify_grouped = {}
+    for row in notify_copy_rows:
+        key = (
+            row.get("batch", ""),
+            row.get("nthDay", ""),
+            row.get("dateRange", ""),
+            row.get("projectCode", ""),
+            row.get("version", ""),
+            row.get("scene", ""),
+            row.get("notifyName", ""),
+        )
+        if key not in notify_grouped:
+            notify_grouped[key] = {"pushUsers": 0, "pushEvents": 0, "clickUsers": 0, "clickEvents": 0}
+        notify_grouped[key]["pushUsers"] += int(float(row.get("pushUsers", 0)))
+        notify_grouped[key]["pushEvents"] += int(float(row.get("pushEvents", 0)))
+        notify_grouped[key]["clickUsers"] += int(float(row.get("clickUsers", 0)))
+        notify_grouped[key]["clickEvents"] += int(float(row.get("clickEvents", 0)))
+
+    for key, metrics in notify_grouped.items():
+        (
+            batch,
+            nth_day,
+            date_range,
+            project_code,
+            version,
+            scene,
+            notify_name,
+        ) = key
+        push_users = metrics["pushUsers"]
+        push_events = metrics["pushEvents"]
+        click_users = metrics["clickUsers"]
+        click_events = metrics["clickEvents"]
+        merged_notify_rows.append(
+            {
+                "batch": batch,
+                "nthDay": nth_day,
+                "dateRange": date_range or batch,
+                "projectCode": project_code,
+                "version": version,
+                "scene": scene,
+                "notifyName": notify_name,
+                "pushUsers": push_users,
+                "pushEvents": push_events,
+                "clickUsers": click_users,
+                "clickEvents": click_events,
+                "userClickRate": (click_users / push_users) if push_users else 0,
+                "eventClickRate": (click_events / push_events) if push_events else 0,
+            }
+        )
+    merged_notify_rows.sort(
+        key=lambda row: (
+            row.get("batch", ""),
+            row.get("nthDay", ""),
+            row.get("projectCode", ""),
+            row.get("version", ""),
+            row.get("scene", ""),
+            row.get("notifyName", ""),
+        )
+    )
 
     return {
         "fileName": "并表分析",
@@ -99,6 +162,7 @@ def _build_merged_result(results):
             "dailyByDay": _merge_sheet_rows(daily_rows, ("batch", "version", "day")),
             "byContent": _merge_sheet_rows(content_rows, ("batch", "version", "content")),
             "byVersionSummary": _merge_sheet_rows(version_rows, ("batch", "version")),
+            "byNotifyCopyDay": merged_notify_rows,
         },
     }
 
@@ -129,6 +193,7 @@ def _parse_files_impl():
                 "dailyByDay": parsed["dailyByDay"],
                 "byContent": parsed["byContent"],
                 "byVersionSummary": parsed["byVersionSummary"],
+                "byNotifyCopyDay": parsed.get("byNotifyCopyDay", []),
             }
             results.append({"fileName": file.filename, "sheets": sheets})
             issues = parsed.get("issues", [])

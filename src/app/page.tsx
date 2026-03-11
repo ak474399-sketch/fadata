@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState, type CSSProperties } from "react";
+import { MetricConfigPanel } from "@/components/metric-config-panel";
 import { ResultTable } from "@/components/result-table";
 import { UploadPanel } from "@/components/upload-panel";
+import { createDefaultMetricConfig, type MetricConfigState } from "@/lib/metric-config";
 import type { ParseError, ParseResponse, ParsedFileResult } from "@/types/report";
 
 const REPORT_TYPES = [
@@ -66,6 +68,7 @@ export default function HomePage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [showMergeTipsModal, setShowMergeTipsModal] = useState(false);
+  const [metricConfig, setMetricConfig] = useState<MetricConfigState>(createDefaultMetricConfig());
 
   const selectedResult = useMemo<ParsedFileResult | undefined>(
     () => data.results.find((item) => item.fileName === selectedFileName) ?? data.results[0],
@@ -148,7 +151,8 @@ export default function HomePage() {
             acc +
             item.sheets.dailyByDay.length +
             item.sheets.byContent.length +
-            item.sheets.byVersionSummary.length
+            item.sheets.byVersionSummary.length +
+            (item.sheets.byNotifyCopyDay?.length ?? 0)
           );
         }, 0);
         setSuccessMessage(`解析完成：${result.results.length} 个文件，共 ${totalRows} 行分析数据。`);
@@ -181,7 +185,8 @@ export default function HomePage() {
     const payload = {
       mode,
       selectedFileName: selectedResult?.fileName,
-      results: data.results
+      results: data.results,
+      metricConfig
     };
     const response = await fetch("/api/download", {
       method: "POST",
@@ -295,7 +300,15 @@ export default function HomePage() {
         </div>
       )}
 
-      <ResultTable result={selectedResult} />
+      {data.results.length > 0 && (
+        <MetricConfigPanel
+          config={metricConfig}
+          onChange={setMetricConfig}
+          onReset={() => setMetricConfig(createDefaultMetricConfig())}
+        />
+      )}
+
+      <ResultTable result={selectedResult} metricConfig={metricConfig} />
 
       <div className="card">
         <h2 style={{ marginTop: 0 }}>3) 生成报告（占位）</h2>

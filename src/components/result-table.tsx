@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { AnalysisRow, ParsedFileResult } from "@/types/report";
+import { resolveMetricColumns, type MetricConfigState } from "@/lib/metric-config";
+import type { AnalysisRow, NotifyCopyRow, ParsedFileResult } from "@/types/report";
 
 type ResultTableProps = {
   result?: ParsedFileResult;
+  metricConfig: MetricConfigState;
 };
 
 const numberFormatter = new Intl.NumberFormat("en-US");
@@ -13,34 +15,12 @@ const decimalFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2
 });
 
-type TableKey = "dailyByDay" | "byContent" | "byVersionSummary";
+type TableKey = "dailyByDay" | "byContent" | "byVersionSummary" | "byNotifyCopyDay";
 type LeadColumn = { key: "batch" | "version" | "day" | "content"; label: string };
-
-const PATH_COLUMNS: Array<{ key: keyof AnalysisRow; label: string; percent?: boolean; decimal?: boolean }> = [
-  { key: "firstOpen", label: "first open" },
-  { key: "authorizedUsers", label: "通知授权用户数" },
-  { key: "authorizationRate", label: "授权率", percent: true },
-  { key: "uninstallUsers", label: "卸载用户数" },
-  { key: "uninstallRate", label: "卸载率", percent: true },
-  { key: "d0PushUsers", label: "DAY0发送用户数" },
-  { key: "d0PushEvents", label: "DAY0发送事件数" },
-  { key: "d0PenetrationRate", label: "DAY0通知渗透率", percent: true },
-  { key: "d0AvgSentPerUser", label: "DAY0人均发送", decimal: true },
-  { key: "d0ClickUsers", label: "DAY0点击用户数" },
-  { key: "d0ClickEvents", label: "DAY0点击事件数" },
-  { key: "d0UserClickRate", label: "DAY0用户点击率", percent: true },
-  { key: "d0EventClickRate", label: "DAY0事件点击率", percent: true },
-  { key: "d0AvgClickPerUser", label: "DAY0人均点击数", decimal: true },
-  { key: "d1PushUsers", label: "DAY1发送用户数" },
-  { key: "d1PushEvents", label: "DAY1发送事件数" },
-  { key: "d1PenetrationRate", label: "DAY1通知渗透率", percent: true },
-  { key: "d1AvgSentPerUser", label: "DAY1人均发送", decimal: true },
-  { key: "d1ClickUsers", label: "DAY1点击用户数" },
-  { key: "d1ClickEvents", label: "DAY1点击事件数" },
-  { key: "d1UserClickRate", label: "DAY1用户点击率", percent: true },
-  { key: "d1EventClickRate", label: "DAY1事件点击率", percent: true },
-  { key: "d1AvgClickPerUser", label: "DAY1人均点击数", decimal: true }
-];
+type NotifyLeadColumn = {
+  key: "batch" | "nthDay" | "dateRange" | "projectCode" | "version" | "scene" | "notifyName";
+  label: string;
+};
 
 function formatCell(value: number, percent?: boolean, decimal?: boolean): string {
   if (percent) return `${(value * 100).toFixed(2)}%`;
@@ -48,9 +28,14 @@ function formatCell(value: number, percent?: boolean, decimal?: boolean): string
   return numberFormatter.format(value);
 }
 
-export function ResultTable({ result }: ResultTableProps) {
+export function ResultTable({ result, metricConfig }: ResultTableProps) {
   const [activeTable, setActiveTable] = useState<TableKey>("dailyByDay");
-  const safeSheets = result?.sheets ?? { dailyByDay: [], byContent: [], byVersionSummary: [] };
+  const safeSheets = result?.sheets ?? {
+    dailyByDay: [],
+    byContent: [],
+    byVersionSummary: [],
+    byNotifyCopyDay: []
+  };
 
   useEffect(() => {
     setActiveTable("dailyByDay");
@@ -58,12 +43,22 @@ export function ResultTable({ result }: ResultTableProps) {
   const titleMap: Record<TableKey, string> = {
     dailyByDay: "分日 PUSH 分析",
     byContent: "PUSH 内容分析",
-    byVersionSummary: "分版本汇总分析"
+    byVersionSummary: "分版本汇总分析",
+    byNotifyCopyDay: "通知文案分天分析"
   };
-  const rows = safeSheets[activeTable];
-  const hasBatch = useMemo(() => rows.some((row) => Boolean(row.batch)), [rows]);
+  const rows = safeSheets[activeTable] as AnalysisRow[];
+  const notifyRows = safeSheets.byNotifyCopyDay as NotifyCopyRow[];
+  const hasBatch = useMemo(() => {
+    if (activeTable === "byNotifyCopyDay") {
+      return notifyRows.some((row) => Boolean(row.batch));
+    }
+    return rows.some((row) => Boolean(row.batch));
+  }, [activeTable, notifyRows, rows]);
 
   const leadingColumns = useMemo(() => {
+    if (activeTable === "byNotifyCopyDay") {
+      return [];
+    }
     if (activeTable === "dailyByDay") {
       const columns: LeadColumn[] = [
         { key: "version", label: "版本号" },
@@ -85,6 +80,20 @@ export function ResultTable({ result }: ResultTableProps) {
     return columns;
   }, [activeTable, hasBatch]);
 
+  const notifyLeadingColumns = useMemo(() => {
+    const columns: NotifyLeadColumn[] = [
+      { key: "nthDay", label: "第N天" },
+      { key: "dateRange", label: "日期" },
+      { key: "projectCode", label: "项目代号" },
+      { key: "version", label: "版本" },
+      { key: "scene", label: "通知场景" },
+      { key: "notifyName", label: "通知命名" }
+    ];
+    if (hasBatch) columns.unshift({ key: "batch", label: "批次" });
+    return columns;
+  }, [hasBatch]);
+  const metricColumns = useMemo(() => resolveMetricColumns(activeTable, metricConfig), [activeTable, metricConfig]);
+
   if (!result) {
     return (
       <div className="card">
@@ -97,7 +106,7 @@ export function ResultTable({ result }: ResultTableProps) {
   return (
     <div className="card">
       <h2 style={{ marginTop: 0 }}>2) 解析结果 - {result.fileName}</h2>
-      <p className="muted">三张表：分日 PUSH 分析 / PUSH 内容分析 / 分版本汇总分析。</p>
+      <p className="muted">四张表：分日 PUSH 分析 / PUSH 内容分析 / 分版本汇总分析 / 通知文案分天分析。</p>
       <div className="actions" style={{ marginBottom: 12 }}>
         <button disabled={activeTable === "dailyByDay"} onClick={() => setActiveTable("dailyByDay")}>
           分日 PUSH 分析
@@ -111,6 +120,9 @@ export function ResultTable({ result }: ResultTableProps) {
         >
           分版本汇总分析
         </button>
+        <button disabled={activeTable === "byNotifyCopyDay"} onClick={() => setActiveTable("byNotifyCopyDay")}>
+          通知文案分天分析
+        </button>
       </div>
       <p className="muted" style={{ marginBottom: 10 }}>
         当前：{titleMap[activeTable]}
@@ -119,30 +131,73 @@ export function ResultTable({ result }: ResultTableProps) {
         <table>
           <thead>
             <tr>
-              {leadingColumns.map((column) => (
-                <th key={column.key}>{column.label}</th>
-              ))}
-              {PATH_COLUMNS.map((column) => (
-                <th key={String(column.key)}>{column.label}</th>
-              ))}
+              {activeTable === "byNotifyCopyDay" ? (
+                <>
+                  {notifyLeadingColumns.map((column) => (
+                    <th key={column.key}>{column.label}</th>
+                  ))}
+                  {metricColumns.map((column) => (
+                    <th key={column.id}>{column.label}</th>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {leadingColumns.map((column) => (
+                    <th key={column.key}>{column.label}</th>
+                  ))}
+                  {metricColumns.map((column) => (
+                    <th key={column.id}>{column.label}</th>
+                  ))}
+                </>
+              )}
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => (
-              <tr key={`${row.version}-${row.day ?? ""}-${row.content ?? ""}-${index}`}>
-                {leadingColumns.map((column) => (
-                  <td key={column.key}>{row[column.key] ?? "-"}</td>
+            {activeTable === "byNotifyCopyDay"
+              ? notifyRows.map((row, index) => (
+                  <tr key={`${row.nthDay}-${row.projectCode}-${row.version}-${row.notifyName}-${index}`}>
+                    {notifyLeadingColumns.map((column) => (
+                      <td key={column.key}>{row[column.key] ?? "-"}</td>
+                    ))}
+                    {metricColumns.map((column) => (
+                      <td key={column.id}>
+                        {formatCell(
+                          Number(row[column.id as keyof NotifyCopyRow] ?? 0),
+                          column.percent,
+                          column.decimal
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              : rows.map((row, index) => (
+                  <tr key={`${row.version}-${row.day ?? ""}-${row.content ?? ""}-${index}`}>
+                    {leadingColumns.map((column) => (
+                      <td key={column.key}>{row[column.key] ?? "-"}</td>
+                    ))}
+                    {metricColumns.map((column) => (
+                      <td key={column.id}>
+                        {formatCell(
+                          Number(row[column.id as keyof AnalysisRow] ?? 0),
+                          column.percent,
+                          column.decimal
+                        )}
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-                {PATH_COLUMNS.map((column) => (
-                  <td key={String(column.key)}>
-                    {formatCell(row[column.key] as number, column.percent, column.decimal)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {rows.length === 0 && (
+            {((activeTable === "byNotifyCopyDay" && notifyRows.length === 0) ||
+              (activeTable !== "byNotifyCopyDay" && rows.length === 0)) && (
               <tr>
-                <td colSpan={leadingColumns.length + PATH_COLUMNS.length}>当前表暂无数据。</td>
+                <td
+                  colSpan={
+                    activeTable === "byNotifyCopyDay"
+                      ? notifyLeadingColumns.length + metricColumns.length
+                      : leadingColumns.length + metricColumns.length
+                  }
+                >
+                  当前表暂无数据。
+                </td>
               </tr>
             )}
           </tbody>

@@ -76,6 +76,30 @@ def _notify_group(name: str) -> str:
     return suffix or "unknown"
 
 
+def _notify_scene(name: str) -> str:
+    notify_name = (name or "").strip()
+    if not notify_name:
+        return "unknown"
+    if notify_name == "(not set)":
+        return "(not set)"
+    parts = [part.strip() for part in notify_name.split("_") if part.strip()]
+    if not parts:
+        return "unknown"
+
+    candidate = ""
+    first_lower = parts[0].lower()
+    if first_lower == "notify":
+        candidate = parts[2] if len(parts) >= 3 else parts[-1]
+    elif first_lower.startswith("notify"):
+        candidate = parts[1] if len(parts) >= 2 else parts[-1]
+    else:
+        candidate = parts[-1]
+
+    scene = re.sub(r"A\d+$", "", candidate, flags=re.IGNORECASE)
+    scene = re.sub(r"\d+$", "", scene).strip().lower()
+    return scene or "unknown"
+
+
 def _build_header_index(df: pd.DataFrame) -> Dict[str, int]:
     if len(df.index) < 1:
         raise ValueError("文件为空，无法读取头部信息。")
@@ -123,10 +147,16 @@ def _extract_base_meta(df: pd.DataFrame) -> Dict[str, Union[int, str]]:
         raise ValueError("第 2 行版本号缺失或表头不合法（应包含“版本号”列）。")
 
     return {
+        "projectCode": read_text("项目名称", "项目代号", "project", "project_name"),
         "version": version,
         "firstOpen": read_int("first open", "first_open"),
         "authorizedUsers": read_int("通知授权用户数"),
         "uninstallUsers": read_int("卸载用户数"),
+        # 优先使用报表前置汇总口径，避免事件明细重复触达导致用户数被放大。
+        "d0PushUsersBase": read_int("DAY0发送用户数", "D0发送用户数", "day0_send_users"),
+        "d1PushUsersBase": read_int("DAY1发送用户数", "D1发送用户数", "day1_send_users"),
+        "d0ClickUsersBase": read_int("DAY0点击数", "D0点击数", "day0_click_users", "day0_clicks"),
+        "d1ClickUsersBase": read_int("DAY1点击数", "D1点击数", "day1_click_users", "day1_clicks"),
     }
 
 
@@ -171,14 +201,20 @@ def _empty_group() -> Dict[str, int]:
     }
 
 
-def _build_metrics(group: Dict[str, int], first_open: int, authorized_users: int, uninstall_users: int) -> Dict:
-    d0_push_users = group["d0PushUsers"]
+def _build_metrics(
+    group: Dict[str, int],
+    first_open: int,
+    authorized_users: int,
+    uninstall_users: int,
+    user_bases: Dict[str, int],
+) -> Dict:
+    d0_push_users = user_bases.get("d0PushUsersBase", 0) or group["d0PushUsers"]
     d0_push_events = group["d0PushEvents"]
-    d0_click_users = group["d0ClickUsers"]
+    d0_click_users = user_bases.get("d0ClickUsersBase", 0) or group["d0ClickUsers"]
     d0_click_events = group["d0ClickEvents"]
-    d1_push_users = group["d1PushUsers"]
+    d1_push_users = user_bases.get("d1PushUsersBase", 0) or group["d1PushUsers"]
     d1_push_events = group["d1PushEvents"]
-    d1_click_users = group["d1ClickUsers"]
+    d1_click_users = user_bases.get("d1ClickUsersBase", 0) or group["d1ClickUsers"]
     d1_click_events = group["d1ClickEvents"]
 
     return {
@@ -210,10 +246,17 @@ def _build_metrics(group: Dict[str, int], first_open: int, authorized_users: int
 
 def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
     base_meta = _extract_base_meta(df)
+    project_code = str(base_meta["projectCode"] or "").strip() or "unknown"
     version = str(base_meta["version"])
     first_open = int(base_meta["firstOpen"])
     authorized_users = int(base_meta["authorizedUsers"])
     uninstall_users = int(base_meta["uninstallUsers"])
+    user_bases = {
+        "d0PushUsersBase": int(base_meta["d0PushUsersBase"]),
+        "d1PushUsersBase": int(base_meta["d1PushUsersBase"]),
+        "d0ClickUsersBase": int(base_meta["d0ClickUsersBase"]),
+        "d1ClickUsersBase": int(base_meta["d1ClickUsersBase"]),
+    }
 
     date_start, date_end = _extract_date_range(df)
     batch = f"{date_start}-{date_end}"
@@ -244,6 +287,14 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
     grouped_by_day = defaultdict(_empty_group)
     grouped_by_content = defaultdict(_empty_group)
     grouped_by_version = defaultdict(_empty_group)
+    grouped_by_notify_day = defaultdict(
+        lambda: {
+            "pushUsers": 0,
+            "pushEvents": 0,
+            "clickUsers": 0,
+            "clickEvents": 0,
+        }
+    )
     row_issues: List[str] = []
 
     def read_value(row_values: List, n_value: int, mapping: Dict[int, int]) -> int:
@@ -299,6 +350,14 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
                 group["d0PushEvents"] += d0_event
                 group["d1PushUsers"] += d1_active
                 group["d1PushEvents"] += d1_event
+            if notify_name != "(not set)":
+                scene = _notify_scene(notify_name)
+                day0_key = (batch, "DAY0", project_code, version, scene, notify_name)
+                day1_key = (batch, "DAY1", project_code, version, scene, notify_name)
+                grouped_by_notify_day[day0_key]["pushUsers"] += d0_active
+                grouped_by_notify_day[day0_key]["pushEvents"] += d0_event
+                grouped_by_notify_day[day1_key]["pushUsers"] += d1_active
+                grouped_by_notify_day[day1_key]["pushEvents"] += d1_event
 
         if "click" in lowered_event:
             for group in targets:
@@ -306,13 +365,21 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
                 group["d0ClickEvents"] += d0_event
                 group["d1ClickUsers"] += d1_active
                 group["d1ClickEvents"] += d1_event
+            if notify_name != "(not set)":
+                scene = _notify_scene(notify_name)
+                day0_key = (batch, "DAY0", project_code, version, scene, notify_name)
+                day1_key = (batch, "DAY1", project_code, version, scene, notify_name)
+                grouped_by_notify_day[day0_key]["clickUsers"] += d0_active
+                grouped_by_notify_day[day0_key]["clickEvents"] += d0_event
+                grouped_by_notify_day[day1_key]["clickUsers"] += d1_active
+                grouped_by_notify_day[day1_key]["clickEvents"] += d1_event
 
     daily_rows: List[Dict] = []
     for (row_batch, row_version, day), group in grouped_by_day.items():
         row = {"version": row_version, "day": day}
         if include_batch:
             row["batch"] = row_batch
-        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users))
+        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users, user_bases))
         daily_rows.append(row)
 
     content_rows: List[Dict] = []
@@ -322,7 +389,7 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
         row = {"version": row_version, "content": content}
         if include_batch:
             row["batch"] = row_batch
-        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users))
+        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users, user_bases))
         content_rows.append(row)
 
     version_rows: List[Dict] = []
@@ -330,21 +397,65 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
         row = {"version": row_version}
         if include_batch:
             row["batch"] = row_batch
-        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users))
+        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users, user_bases))
         version_rows.append(row)
+
+    notify_copy_rows: List[Dict] = []
+    for (row_batch, nth_day, row_project, row_version, scene, notify_name), group in grouped_by_notify_day.items():
+        push_users = int(group["pushUsers"])
+        push_events = int(group["pushEvents"])
+        click_users = int(group["clickUsers"])
+        click_events = int(group["clickEvents"])
+        row = {
+            "nthDay": nth_day,
+            "dateRange": row_batch,
+            "projectCode": row_project,
+            "version": row_version,
+            "scene": scene,
+            "notifyName": notify_name,
+            "pushUsers": push_users,
+            "pushEvents": push_events,
+            "clickUsers": click_users,
+            "clickEvents": click_events,
+            "userClickRate": (click_users / push_users) if push_users else 0,
+            "eventClickRate": (click_events / push_events) if push_events else 0,
+        }
+        if include_batch:
+            row["batch"] = row_batch
+        notify_copy_rows.append(row)
 
     if include_batch:
         daily_rows.sort(key=lambda item: (item.get("batch", ""), item["version"], item["day"]))
         content_rows.sort(key=lambda item: (item.get("batch", ""), item["version"], item["content"]))
         version_rows.sort(key=lambda item: (item.get("batch", ""), item["version"]))
+        notify_copy_rows.sort(
+            key=lambda item: (
+                item.get("batch", ""),
+                item["nthDay"],
+                item["projectCode"],
+                item["version"],
+                item["scene"],
+                item["notifyName"],
+            )
+        )
     else:
         daily_rows.sort(key=lambda item: (item["version"], item["day"]))
         content_rows.sort(key=lambda item: (item["version"], item["content"]))
         version_rows.sort(key=lambda item: (item["version"],))
+        notify_copy_rows.sort(
+            key=lambda item: (
+                item["nthDay"],
+                item["projectCode"],
+                item["version"],
+                item["scene"],
+                item["notifyName"],
+            )
+        )
 
     return {
         "dailyByDay": daily_rows,
         "byContent": content_rows,
         "byVersionSummary": version_rows,
+        "byNotifyCopyDay": notify_copy_rows,
         "issues": row_issues,
     }

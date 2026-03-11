@@ -28,11 +28,30 @@ export type AnalysisRow = {
   d1AvgClickPerUser: number;
 };
 
+export type NotifyCopyRow = {
+  batch?: string;
+  nthDay: "DAY0" | "DAY1";
+  dateRange: string;
+  projectCode: string;
+  version: string;
+  scene: string;
+  notifyName: string;
+  pushUsers: number;
+  pushEvents: number;
+  clickUsers: number;
+  clickEvents: number;
+  userClickRate: number;
+  eventClickRate: number;
+};
+
 export type ParsedSheets = {
   dailyByDay: AnalysisRow[];
   byContent: AnalysisRow[];
   byVersionSummary: AnalysisRow[];
+  byNotifyCopyDay: NotifyCopyRow[];
 };
+
+export type SheetKey = "dailyByDay" | "byContent" | "byVersionSummary" | "byNotifyCopyDay";
 
 export type ParsedFileResult = {
   fileName: string;
