@@ -93,16 +93,14 @@ def _notify_group(name: str) -> str:
     if notify_name == "(not set)":
         return "(not set)"
 
-    suffix = notify_name
-    if notify_name.startswith("notify_"):
-        parts = notify_name.split("_", 2)
-        if len(parts) == 3:
-            suffix = parts[2]
-
-    suffix = re.sub(r"A\d+$", "", suffix, flags=re.IGNORECASE)
-    suffix = re.sub(r"\d+$", "", suffix)
-    suffix = suffix.strip("_").lower()
-    return suffix or "unknown"
+    # Keep the full notify name prefix and only trim trailing numeric variants.
+    # Examples:
+    # - notify_pdf05_homeA4 -> notify_pdf05_home
+    # - notify_pdf05_unlock_07 -> notify_pdf05_unlock
+    grouped = re.sub(r"A\d+$", "", notify_name, flags=re.IGNORECASE)
+    grouped = re.sub(r"\d+$", "", grouped)
+    grouped = grouped.strip("_").lower()
+    return grouped or "unknown"
 
 
 def _notify_scene(name: str) -> str:
