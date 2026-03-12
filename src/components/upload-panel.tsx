@@ -131,23 +131,29 @@ export function UploadPanel({
           </div>
           <div className="mapping-panel">
             <p className="muted" style={{ marginBottom: 8 }}>
-              事件映射（可选）：不填时默认发送匹配 `push/sendNotification`，点击匹配 `click/clickNotification`。
+              事件映射（可选）：左侧固定系统事件，右侧填写你要映射的自定义事件名（多个可用逗号分隔）。
             </p>
             <div className="mapping-grid">
-              <input
-                className="sample-password"
-                type="text"
-                placeholder="发送事件映射（可填多个，逗号分隔）"
-                value={sendEventMapping}
-                onChange={(event) => onEventMappingChange("send", event.target.value)}
-              />
-              <input
-                className="sample-password"
-                type="text"
-                placeholder="点击事件映射（可填多个，逗号分隔）"
-                value={clickEventMapping}
-                onChange={(event) => onEventMappingChange("click", event.target.value)}
-              />
+              <div className="mapping-row">
+                <span className="mapping-fixed-key">push</span>
+                <input
+                  className="sample-password"
+                  type="text"
+                  placeholder="填写发送事件自定义字段，例如 sendNotification"
+                  value={sendEventMapping}
+                  onChange={(event) => onEventMappingChange("send", event.target.value)}
+                />
+              </div>
+              <div className="mapping-row">
+                <span className="mapping-fixed-key">click</span>
+                <input
+                  className="sample-password"
+                  type="text"
+                  placeholder="填写点击事件自定义字段，例如 clickNotification"
+                  value={clickEventMapping}
+                  onChange={(event) => onEventMappingChange("click", event.target.value)}
+                />
+              </div>
             </div>
           </div>
           {uploading && (

@@ -110,8 +110,28 @@ body {
 
 .mapping-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
+}
+
+.mapping-row {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.mapping-fixed-key {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid #d3def5;
+  border-radius: 8px;
+  background: #eef4ff;
+  color: #2f4f9d;
+  font-weight: 600;
+  font-size: 13px;
 }
 
 .dropzone-active {
@@ -368,5 +388,9 @@ th {
 
   .mapping-grid {
     grid-template-columns: 1fr;
+  }
+
+  .mapping-row {
+    grid-template-columns: 68px 1fr;
   }
 }

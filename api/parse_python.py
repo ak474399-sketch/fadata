@@ -16,6 +16,16 @@ def _build_error(file_name, code, message, stage):
     return {"fileName": file_name, "code": code, "message": message, "stage": stage}
 
 
+def _classify_parse_error(file_name, exc: Exception):
+    message = str(exc)
+    lowered = message.lower()
+    if "事件映射未命中" in message:
+        return _build_error(file_name, "E_EVENT_MAPPING_MISS", message, "validate")
+    if "未识别到第 n 天" in lowered or "未找到表头行" in message or "版本号缺失" in message:
+        return _build_error(file_name, "E_SCHEMA_INVALID", message, "read")
+    return _build_error(file_name, "E_PARSE_FILE", message, "parse")
+
+
 def _empty_acc():
     return {
         "firstOpen": 0,
@@ -216,7 +226,7 @@ def _parse_files_impl():
                     )
                 )
         except Exception as exc:
-            errors.append(_build_error(file.filename, "E_PARSE_FILE", str(exc), "parse"))
+            errors.append(_classify_parse_error(file.filename, exc))
 
     if merge_mode and len(results) > 1:
         results.append(_build_merged_result(results))
