@@ -8,6 +8,9 @@ type UploadPanelProps = {
   files: Array<{ id: string; name: string }>;
   onFileChange: (files: FileList | null) => void;
   onRemoveFile: (fileId: string) => void;
+  sendEventMapping: string;
+  clickEventMapping: string;
+  onEventMappingChange: (type: "send" | "click", value: string) => void;
   onParse: () => void;
   onMergeParse: () => void;
   canParse: boolean;
@@ -19,6 +22,9 @@ export function UploadPanel({
   files,
   onFileChange,
   onRemoveFile,
+  sendEventMapping,
+  clickEventMapping,
+  onEventMappingChange,
   onParse,
   onMergeParse,
   canParse
@@ -122,6 +128,27 @@ export function UploadPanel({
             <button disabled={!canParse || uploading} onClick={onMergeParse}>
               并表解析
             </button>
+          </div>
+          <div className="mapping-panel">
+            <p className="muted" style={{ marginBottom: 8 }}>
+              事件映射（可选）：不填时默认发送匹配 `push/sendNotification`，点击匹配 `click/clickNotification`。
+            </p>
+            <div className="mapping-grid">
+              <input
+                className="sample-password"
+                type="text"
+                placeholder="发送事件映射（可填多个，逗号分隔）"
+                value={sendEventMapping}
+                onChange={(event) => onEventMappingChange("send", event.target.value)}
+              />
+              <input
+                className="sample-password"
+                type="text"
+                placeholder="点击事件映射（可填多个，逗号分隔）"
+                value={clickEventMapping}
+                onChange={(event) => onEventMappingChange("click", event.target.value)}
+              />
+            </div>
           </div>
           {uploading && (
             <div style={{ marginTop: 12 }}>

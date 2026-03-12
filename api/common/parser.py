@@ -13,6 +13,8 @@ N_LABEL_PATTERN = re.compile(r"^\d{4}$")
 DATE_PATTERN = re.compile(r"^\d{8}$")
 ACTIVE_USER_LABELS = {"活跃用户", "活跃用户数", "activeusers", "activeuser"}
 EVENT_COUNT_LABELS = {"事件数", "事件", "eventcount", "events", "event"}
+DEFAULT_SEND_EVENT_KEYWORDS = ["push", "sendnotification"]
+DEFAULT_CLICK_EVENT_KEYWORDS = ["click", "clicknotification"]
 
 
 def _normalize_label(text: str) -> str:
@@ -37,6 +39,33 @@ def _normalize_int(value) -> int:
         return 0
 
 
+def _normalize_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and pd.isna(value):
+        return ""
+    text = str(value).strip()
+    if text.lower() in {"nan", "none", "null", "-", "--"}:
+        return ""
+    return text
+
+
+def _parse_event_keywords(value: str) -> List[str]:
+    text = _normalize_text(value).lower()
+    if not text:
+        return []
+    parts = re.split(r"[,，\n\r;；|]+", text)
+    keywords = [part.strip() for part in parts if part.strip()]
+    deduped: List[str] = []
+    seen = set()
+    for keyword in keywords:
+        if keyword in seen:
+            continue
+        seen.add(keyword)
+        deduped.append(keyword)
+    return deduped
+
+
 def _extract_date_range(df: pd.DataFrame) -> Tuple[str, str]:
     for row_index in range(min(10, len(df.index))):
         for value in df.iloc[row_index].tolist():
@@ -50,7 +79,7 @@ def _extract_date_range(df: pd.DataFrame) -> Tuple[str, str]:
 
 def _find_event_header_row(df: pd.DataFrame) -> int:
     for row_index in range(len(df.index)):
-        row = [str(item).strip() if item is not None else "" for item in df.iloc[row_index].tolist()]
+        row = [_normalize_text(item) for item in df.iloc[row_index].tolist()]
         first_col = _normalize_label(row[0]) if row else ""
         if first_col in {"事件名称", "eventname"}:
             return row_index
@@ -103,7 +132,7 @@ def _notify_scene(name: str) -> str:
 def _build_header_index(df: pd.DataFrame) -> Dict[str, int]:
     if len(df.index) < 1:
         raise ValueError("文件为空，无法读取头部信息。")
-    header_row = [str(item).strip() if item is not None else "" for item in df.iloc[0].tolist()]
+    header_row = [_normalize_text(item) for item in df.iloc[0].tolist()]
     header_map: Dict[str, int] = {}
     for idx, label in enumerate(header_row):
         if not label:
@@ -140,7 +169,7 @@ def _extract_base_meta(df: pd.DataFrame) -> Dict[str, Union[int, str]]:
         idx = get_idx(*labels)
         if idx < 0 or idx >= len(values):
             return ""
-        return str(values[idx]).strip() if values[idx] is not None else ""
+        return _normalize_text(values[idx])
 
     version = read_text("版本号", "版本", "version", "Version")
     if not version:
@@ -207,14 +236,31 @@ def _build_metrics(
     authorized_users: int,
     uninstall_users: int,
     user_bases: Dict[str, int],
+    use_manual_user_bases: bool,
 ) -> Dict:
-    d0_push_users = user_bases.get("d0PushUsersBase", 0) or group["d0PushUsers"]
+    d0_push_users = (
+        (user_bases.get("d0PushUsersBase", 0) or group["d0PushUsers"])
+        if use_manual_user_bases
+        else group["d0PushUsers"]
+    )
     d0_push_events = group["d0PushEvents"]
-    d0_click_users = user_bases.get("d0ClickUsersBase", 0) or group["d0ClickUsers"]
+    d0_click_users = (
+        (user_bases.get("d0ClickUsersBase", 0) or group["d0ClickUsers"])
+        if use_manual_user_bases
+        else group["d0ClickUsers"]
+    )
     d0_click_events = group["d0ClickEvents"]
-    d1_push_users = user_bases.get("d1PushUsersBase", 0) or group["d1PushUsers"]
+    d1_push_users = (
+        (user_bases.get("d1PushUsersBase", 0) or group["d1PushUsers"])
+        if use_manual_user_bases
+        else group["d1PushUsers"]
+    )
     d1_push_events = group["d1PushEvents"]
-    d1_click_users = user_bases.get("d1ClickUsersBase", 0) or group["d1ClickUsers"]
+    d1_click_users = (
+        (user_bases.get("d1ClickUsersBase", 0) or group["d1ClickUsers"])
+        if use_manual_user_bases
+        else group["d1ClickUsers"]
+    )
     d1_click_events = group["d1ClickEvents"]
 
     return {
@@ -244,7 +290,12 @@ def _build_metrics(
     }
 
 
-def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
+def parse_dataframe(
+    df: pd.DataFrame,
+    include_batch: bool = False,
+    send_event_mapping: str = "",
+    click_event_mapping: str = "",
+) -> Dict:
     base_meta = _extract_base_meta(df)
     project_code = str(base_meta["projectCode"] or "").strip() or "unknown"
     version = str(base_meta["version"])
@@ -266,8 +317,8 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
     if header_row < 1:
         raise ValueError("未找到第 N 天表头行。")
 
-    n_row = [str(item).strip() if item is not None else "" for item in df.iloc[header_row - 1].tolist()]
-    field_row = [str(item).strip() if item is not None else "" for item in df.iloc[header_row].tolist()]
+    n_row = [_normalize_text(item) for item in df.iloc[header_row - 1].tolist()]
+    field_row = [_normalize_text(item) for item in df.iloc[header_row].tolist()]
 
     n_active_col: Dict[int, int] = {}
     n_event_col: Dict[int, int] = {}
@@ -296,6 +347,13 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
         }
     )
     row_issues: List[str] = []
+    send_keywords = _parse_event_keywords(send_event_mapping) or DEFAULT_SEND_EVENT_KEYWORDS
+    click_keywords = _parse_event_keywords(click_event_mapping) or DEFAULT_CLICK_EVENT_KEYWORDS
+    use_manual_send_mapping = bool(_parse_event_keywords(send_event_mapping))
+    use_manual_click_mapping = bool(_parse_event_keywords(click_event_mapping))
+    observed_events = set()
+    send_match_count = 0
+    click_match_count = 0
 
     def read_value(row_values: List, n_value: int, mapping: Dict[int, int]) -> int:
         col = mapping.get(n_value)
@@ -308,9 +366,9 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
         if len(row_values) < 3:
             continue
 
-        event_name = str(row_values[0]).strip() if row_values[0] is not None else ""
-        first_visit_day = str(row_values[1]).strip() if row_values[1] is not None else ""
-        notify_name = str(row_values[2]).strip() if row_values[2] is not None else ""
+        event_name = _normalize_text(row_values[0]) if len(row_values) > 0 else ""
+        first_visit_day = _normalize_text(row_values[1]) if len(row_values) > 1 else ""
+        notify_name = _normalize_text(row_values[2]) if len(row_values) > 2 else ""
         csv_row_no = row_index + 1
 
         if not event_name and not first_visit_day and not notify_name:
@@ -319,6 +377,7 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
         if not event_name:
             row_issues.append(f"第 {csv_row_no} 行事件名称缺失")
             continue
+        observed_events.add(event_name)
         if not DATE_PATTERN.match(first_visit_day):
             row_issues.append(f"第 {csv_row_no} 行首次访问日期不合法：{first_visit_day or '空值'}")
             continue
@@ -343,8 +402,11 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
 
         targets = [grouped_by_day[day_key], grouped_by_content[content_group_key], grouped_by_version[version_key]]
         lowered_event = event_name.lower()
+        is_send_event = any(keyword in lowered_event for keyword in send_keywords)
+        is_click_event = any(keyword in lowered_event for keyword in click_keywords)
 
-        if "push" in lowered_event:
+        if is_send_event:
+            send_match_count += 1
             for group in targets:
                 group["d0PushUsers"] += d0_active
                 group["d0PushEvents"] += d0_event
@@ -359,7 +421,8 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
                 grouped_by_notify_day[day1_key]["pushUsers"] += d1_active
                 grouped_by_notify_day[day1_key]["pushEvents"] += d1_event
 
-        if "click" in lowered_event:
+        if is_click_event:
+            click_match_count += 1
             for group in targets:
                 group["d0ClickUsers"] += d0_active
                 group["d0ClickEvents"] += d0_event
@@ -374,12 +437,31 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
                 grouped_by_notify_day[day1_key]["clickUsers"] += d1_active
                 grouped_by_notify_day[day1_key]["clickEvents"] += d1_event
 
+    event_preview = "、".join(sorted(observed_events)[:6]) or "无"
+    if use_manual_send_mapping and send_match_count == 0:
+        raise ValueError(
+            f"发送事件映射未命中：{send_event_mapping}。可选事件示例：{event_preview}"
+        )
+    if use_manual_click_mapping and click_match_count == 0:
+        raise ValueError(
+            f"点击事件映射未命中：{click_event_mapping}。可选事件示例：{event_preview}"
+        )
+
     daily_rows: List[Dict] = []
     for (row_batch, row_version, day), group in grouped_by_day.items():
         row = {"version": row_version, "day": day}
         if include_batch:
             row["batch"] = row_batch
-        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users, user_bases))
+        row.update(
+            _build_metrics(
+                group,
+                first_open,
+                authorized_users,
+                uninstall_users,
+                user_bases,
+                use_manual_user_bases=False,
+            )
+        )
         daily_rows.append(row)
 
     content_rows: List[Dict] = []
@@ -389,7 +471,16 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
         row = {"version": row_version, "content": content}
         if include_batch:
             row["batch"] = row_batch
-        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users, user_bases))
+        row.update(
+            _build_metrics(
+                group,
+                first_open,
+                authorized_users,
+                uninstall_users,
+                user_bases,
+                use_manual_user_bases=False,
+            )
+        )
         content_rows.append(row)
 
     version_rows: List[Dict] = []
@@ -397,7 +488,16 @@ def parse_dataframe(df: pd.DataFrame, include_batch: bool = False) -> Dict:
         row = {"version": row_version}
         if include_batch:
             row["batch"] = row_batch
-        row.update(_build_metrics(group, first_open, authorized_users, uninstall_users, user_bases))
+        row.update(
+            _build_metrics(
+                group,
+                first_open,
+                authorized_users,
+                uninstall_users,
+                user_bases,
+                use_manual_user_bases=True,
+            )
+        )
         version_rows.append(row)
 
     notify_copy_rows: List[Dict] = []

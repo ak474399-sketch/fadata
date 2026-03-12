@@ -75,6 +75,8 @@ export default function HomePage() {
   const [showMergeTipsModal, setShowMergeTipsModal] = useState(false);
   const [metricConfig, setMetricConfig] = useState<MetricConfigState>(createDefaultMetricConfig());
   const [metricSaveHint, setMetricSaveHint] = useState("");
+  const [sendEventMapping, setSendEventMapping] = useState("");
+  const [clickEventMapping, setClickEventMapping] = useState("");
 
   const selectedResult = useMemo<ParsedFileResult | undefined>(
     () => data.results.find((item) => item.fileName === selectedFileName) ?? data.results[0],
@@ -124,6 +126,8 @@ export default function HomePage() {
     const form = new FormData();
     for (const item of files) form.append("files", item.file);
     form.append("mergeMode", mergeMode ? "true" : "false");
+    form.append("sendEventMapping", sendEventMapping);
+    form.append("clickEventMapping", clickEventMapping);
     const progressTimer = window.setInterval(() => {
       setParseProgress((prev) => (prev >= 90 ? prev : prev + 6));
     }, 250);
@@ -277,6 +281,12 @@ export default function HomePage() {
         files={files.map((item) => ({ id: item.id, name: item.file.name }))}
         onFileChange={handleFileChange}
         onRemoveFile={handleRemoveFile}
+        sendEventMapping={sendEventMapping}
+        clickEventMapping={clickEventMapping}
+        onEventMappingChange={(type, value) => {
+          if (type === "send") setSendEventMapping(value);
+          else setClickEventMapping(value);
+        }}
         onParse={() => handleParse(false)}
         onMergeParse={() => handleParse(true)}
         canParse={canParse}

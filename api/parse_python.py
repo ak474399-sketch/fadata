@@ -181,6 +181,8 @@ def _parse_files_impl():
         )
 
     merge_mode = str(request.form.get("mergeMode", "false")).lower() == "true"
+    send_event_mapping = str(request.form.get("sendEventMapping", "") or "")
+    click_event_mapping = str(request.form.get("clickEventMapping", "") or "")
     results = []
     errors = []
 
@@ -188,7 +190,12 @@ def _parse_files_impl():
         try:
             payload = file.read()
             dataframe = read_table(file.filename, payload)
-            parsed = parse_dataframe(dataframe, include_batch=merge_mode)
+            parsed = parse_dataframe(
+                dataframe,
+                include_batch=merge_mode,
+                send_event_mapping=send_event_mapping,
+                click_event_mapping=click_event_mapping,
+            )
             sheets = {
                 "dailyByDay": parsed["dailyByDay"],
                 "byContent": parsed["byContent"],

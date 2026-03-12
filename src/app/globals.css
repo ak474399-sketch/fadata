@@ -100,6 +100,20 @@ body {
   box-shadow: 0 0 0 3px rgba(36, 99, 235, 0.15);
 }
 
+.mapping-panel {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #e2e8f7;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.mapping-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
 .dropzone-active {
   border-color: #2463eb;
   background: #eef3ff;
@@ -349,6 +363,10 @@ th {
 
 @media (max-width: 860px) {
   .upload-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mapping-grid {
     grid-template-columns: 1fr;
   }
 }
