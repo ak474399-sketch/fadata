@@ -60,7 +60,7 @@ def _merge_metrics(base):
         {
             "authorizationRate": (authorized_users / first_open) if first_open else 0,
             "uninstallRate": (uninstall_users / first_open) if first_open else 0,
-            "d0PenetrationRate": (d0_push_users / first_open) if first_open else 0,
+            "d0PenetrationRate": (d0_push_users / authorized_users) if authorized_users else 0,
             "d0AvgSentPerUser": (d0_push_events / d0_push_users) if d0_push_users else 0,
             "d0UserClickRate": (d0_click_users / d0_push_users) if d0_push_users else 0,
             "d0EventClickRate": (d0_click_events / d0_push_events) if d0_push_events else 0,
@@ -193,6 +193,7 @@ def _parse_files_impl():
     merge_mode = str(request.form.get("mergeMode", "false")).lower() == "true"
     send_event_mapping = str(request.form.get("sendEventMapping", "") or "")
     click_event_mapping = str(request.form.get("clickEventMapping", "") or "")
+    first_visit_range = str(request.form.get("firstVisitDateRange", "") or "")
     results = []
     errors = []
 
@@ -205,6 +206,7 @@ def _parse_files_impl():
                 include_batch=merge_mode,
                 send_event_mapping=send_event_mapping,
                 click_event_mapping=click_event_mapping,
+                first_visit_range=first_visit_range,
             )
             sheets = {
                 "dailyByDay": parsed["dailyByDay"],

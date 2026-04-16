@@ -77,6 +77,7 @@ export default function HomePage() {
   const [metricSaveHint, setMetricSaveHint] = useState("");
   const [sendEventMapping, setSendEventMapping] = useState("");
   const [clickEventMapping, setClickEventMapping] = useState("");
+  const [firstVisitDateRange, setFirstVisitDateRange] = useState("");
 
   const selectedResult = useMemo<ParsedFileResult | undefined>(
     () => data.results.find((item) => item.fileName === selectedFileName) ?? data.results[0],
@@ -128,6 +129,7 @@ export default function HomePage() {
     form.append("mergeMode", mergeMode ? "true" : "false");
     form.append("sendEventMapping", sendEventMapping);
     form.append("clickEventMapping", clickEventMapping);
+    form.append("firstVisitDateRange", firstVisitDateRange);
     const progressTimer = window.setInterval(() => {
       setParseProgress((prev) => (prev >= 90 ? prev : prev + 6));
     }, 250);
@@ -287,6 +289,8 @@ export default function HomePage() {
           if (type === "send") setSendEventMapping(value);
           else setClickEventMapping(value);
         }}
+        firstVisitDateRange={firstVisitDateRange}
+        onFirstVisitDateRangeChange={setFirstVisitDateRange}
         onParse={() => handleParse(false)}
         onMergeParse={() => handleParse(true)}
         canParse={canParse}

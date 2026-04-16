@@ -11,6 +11,8 @@ type UploadPanelProps = {
   sendEventMapping: string;
   clickEventMapping: string;
   onEventMappingChange: (type: "send" | "click", value: string) => void;
+  firstVisitDateRange: string;
+  onFirstVisitDateRangeChange: (value: string) => void;
   onParse: () => void;
   onMergeParse: () => void;
   canParse: boolean;
@@ -25,6 +27,8 @@ export function UploadPanel({
   sendEventMapping,
   clickEventMapping,
   onEventMappingChange,
+  firstVisitDateRange,
+  onFirstVisitDateRangeChange,
   onParse,
   onMergeParse,
   canParse
@@ -152,6 +156,21 @@ export function UploadPanel({
                   placeholder="填写点击事件自定义字段，例如 clickNotification"
                   value={clickEventMapping}
                   onChange={(event) => onEventMappingChange("click", event.target.value)}
+                />
+              </div>
+            </div>
+            <p className="muted" style={{ marginBottom: 8, marginTop: 12 }}>
+              首次访问日期过滤（可选）：仅统计落在该区间内的数据，区间外数据将被清洗。
+            </p>
+            <div className="mapping-grid">
+              <div className="mapping-row">
+                <span className="mapping-fixed-key">日期区间</span>
+                <input
+                  className="sample-password"
+                  type="text"
+                  placeholder="例如 2026-03-05-2026-03-07 或 20260305-20260307"
+                  value={firstVisitDateRange}
+                  onChange={(event) => onFirstVisitDateRangeChange(event.target.value)}
                 />
               </div>
             </div>

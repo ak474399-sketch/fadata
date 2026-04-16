@@ -3,12 +3,14 @@ import io
 import re
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 
 
 DATE_RANGE_PATTERN = re.compile(r"(\d{8})-(\d{8})")
+_VISIT_RANGE_COMPACT_RE = re.compile(r"(\d{8})\s*[-–]\s*(\d{8})")
+_VISIT_RANGE_HYPHEN_RE = re.compile(r"(\d{4}-\d{2}-\d{2})\s*[-–]\s*(\d{4}-\d{2}-\d{2})")
 N_LABEL_PATTERN = re.compile(r"^\d{4}$")
 DATE_PATTERN = re.compile(r"^\d{8}$")
 ACTIVE_USER_LABELS = {"活跃用户", "活跃用户数", "activeusers", "activeuser"}
@@ -48,6 +50,32 @@ def _normalize_text(value) -> str:
     if text.lower() in {"nan", "none", "null", "-", "--"}:
         return ""
     return text
+
+
+def _parse_visit_range(value: str) -> Optional[Tuple["datetime.date", "datetime.date"]]:
+    """Parse a first-visit date range string into a (start, end) date tuple.
+
+    Accepts two formats:
+      - Compact : 20260305-20260307
+      - Hyphenated: 2026-03-05-2026-03-07
+    Returns None if the string is empty or cannot be parsed.
+    """
+    text = _normalize_text(value)
+    if not text:
+        return None
+    for pattern, fmt in (
+        (_VISIT_RANGE_HYPHEN_RE, "%Y-%m-%d"),
+        (_VISIT_RANGE_COMPACT_RE, "%Y%m%d"),
+    ):
+        m = pattern.search(text)
+        if m:
+            try:
+                start = datetime.strptime(m.group(1), fmt).date()
+                end = datetime.strptime(m.group(2), fmt).date()
+                return (start, end) if start <= end else (end, start)
+            except ValueError:
+                continue
+    return None
 
 
 def _parse_event_keywords(value: str) -> List[str]:
@@ -269,7 +297,7 @@ def _build_metrics(
         "uninstallRate": (uninstall_users / first_open) if first_open else 0,
         "d0PushUsers": d0_push_users,
         "d0PushEvents": d0_push_events,
-        "d0PenetrationRate": (d0_push_users / first_open) if first_open else 0,
+        "d0PenetrationRate": (d0_push_users / authorized_users) if authorized_users else 0,
         "d0AvgSentPerUser": (d0_push_events / d0_push_users) if d0_push_users else 0,
         "d0ClickUsers": d0_click_users,
         "d0ClickEvents": d0_click_events,
@@ -293,6 +321,7 @@ def parse_dataframe(
     include_batch: bool = False,
     send_event_mapping: str = "",
     click_event_mapping: str = "",
+    first_visit_range: str = "",
 ) -> Dict:
     base_meta = _extract_base_meta(df)
     project_code = str(base_meta["projectCode"] or "").strip() or "unknown"
@@ -349,9 +378,11 @@ def parse_dataframe(
     click_keywords = _parse_event_keywords(click_event_mapping) or DEFAULT_CLICK_EVENT_KEYWORDS
     use_manual_send_mapping = bool(_parse_event_keywords(send_event_mapping))
     use_manual_click_mapping = bool(_parse_event_keywords(click_event_mapping))
+    visit_range_parsed = _parse_visit_range(first_visit_range)
     observed_events = set()
     send_match_count = 0
     click_match_count = 0
+    filtered_row_count = 0
 
     def read_value(row_values: List, n_value: int, mapping: Dict[int, int]) -> int:
         col = mapping.get(n_value)
@@ -384,6 +415,11 @@ def parse_dataframe(
             continue
 
         first_day = datetime.strptime(first_visit_day, "%Y%m%d").date()
+        if visit_range_parsed:
+            range_start, range_end = visit_range_parsed
+            if not (range_start <= first_day <= range_end):
+                filtered_row_count += 1
+                continue
         delta_days = (report_date - first_day).days
         d0_n = max_n - delta_days
         d1_n = d0_n + 1
@@ -434,6 +470,12 @@ def parse_dataframe(
                 grouped_by_notify_day[day0_key]["clickEvents"] += d0_event
                 grouped_by_notify_day[day1_key]["clickUsers"] += d1_active
                 grouped_by_notify_day[day1_key]["clickEvents"] += d1_event
+
+    if filtered_row_count > 0:
+        range_label = first_visit_range.strip() or str(visit_range_parsed)
+        row_issues.append(
+            f"已清洗 {filtered_row_count} 行首次访问日期不在有效区间 [{range_label}] 内的数据。"
+        )
 
     event_preview = "、".join(sorted(observed_events)[:6]) or "无"
     if use_manual_send_mapping and send_match_count == 0:
